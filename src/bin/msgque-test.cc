@@ -17,7 +17,13 @@ int main(int argc, char** argv) {
   unsigned size = 1024 * 512;
   char* chunk = new char[size];
   allocator alloca(chunk, size);
-  std::cout << "# " << alloca.allocate(10) << std::endl;
-  std::cout << "# " << alloca.allocate(10) << std::endl;
+
+  uint32_t i, j;
+  std::cout << "# " << (i=alloca.allocate(10)) << std::endl;
+  std::cout << "# " << (j=alloca.allocate(10)) << std::endl;
+  alloca.release(i);
+  alloca.release(j);
+  std::cout << "# " << alloca.allocate(15) << std::endl;
+  
   return 0;
 }
