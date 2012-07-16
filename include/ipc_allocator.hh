@@ -63,32 +63,43 @@ public:
     } b;
     b.new_cur.next = cur.next;
     b.new_cur.size = cur.size - block_count * sizeof(alloc_entry);
-
+    
+    // 
+    alloc_entry* pcur = entries_[prev.next];
+    
+    
     if(b.new_cur.size != 0) {
       alloc_entry _ig;
       alloc_entry next;
       alloc_entry* pnext = get_next(&a.new_prev, _ig, next);
       if(pprev->uint64() == prev.uint64() && // pnextの領域は未使用か
+         entries_[prev.next].uint64() == cur.uint64() && 
          __sync_bool_compare_and_swap((uint64_t*)pnext, *(uint64_t*)&next, b.ll)) {
       } else {
         return allocate(size);
       }
     } else {
       a.new_prev.next = cur.next;
-      //std::cerr << "# IN: " << cur.next << ", " << cur.size << ": " << a.new_prev.next << ", " << size_ / sizeof(alloc_entry)<< std::endl;
+      std::cerr << "@ IN: " << cur.next << ", " << cur.size << ": " << a.new_prev.next << ", " << size_ / sizeof(alloc_entry)<< std::endl;
     }
 
-    if(__sync_bool_compare_and_swap((uint64_t*)pprev, *(uint64_t*)&prev, a.ll)) {
+    assert(a.new_prev.next != b.new_cur.next);
+
+    assert(! (pprev->uint64() == prev.uint64() && 
+              entries_[prev.next].uint64() != cur.uint64()));
+
+    if(__sync_bool_compare_and_swap((uint64_t*)pprev, prev.uint64(), a.ll)) {
       // NOTE: ここでSIGKILLが送られたらメモリリークする
       entry_header* h = (entry_header*)&entries_[prev.next];
       h->size = block_count * sizeof(alloc_entry);
+
       return prev.next;
     } else {
       return allocate(size);
     }
   }
   
-  void release(uint32_t index) {
+  void release(uint32_t index, int retry=0) {
     alloc_entry* pprev = &entries_[0];
     alloc_entry prev = *pprev;
     alloc_entry next; 
@@ -97,21 +108,19 @@ public:
       pprev = get_next(pprev, prev, next);
       if(prev.next == next.next) {
         std::cout << "@ " << prev.next << " < " << index << std::endl;
-        dump();
+        // dump();
       }
       assert(prev.next != next.next);
       prev = next;
     }
 
     if(pprev == NULL) {
-      release(index);
+      release(index, retry+1);
       return;
     }
 
     if(prev.next == index) {
       std::cout << "@@ " << prev.next << " == " << index << std::endl;
-      entry_header* h1 = (entry_header*)&entries_[index];
-      std::cout << "@@@ " << prev.size << " == " << h1->size << std::endl;
     }
     assert(prev.next != index);
 
@@ -128,49 +137,8 @@ public:
     a.new_prev.size = prev.size;
 
     if(! __sync_bool_compare_and_swap((uint64_t*)pprev, prev.uint64(), a.ll)) {
-      release(index);
-    }
-
-    /*
-    alloc_entry* pprev = &entries_[0];
-    alloc_entry prev = *pprev;
-    int i = 0;
-    while(pprev->uint64() == prev.uint64() &&
-          (prev.next != 0 && prev.next < index)) {
-      i++;
-      if(i==1000) {
-        std::cerr << "### " << prev.next << "," << index << "," << retry << std::endl;
-      }
-      pprev = &entries_[prev.next];
-      prev = *pprev;
-    }
-
-    if(pprev == NULL) {
-      release(index, retry+1);
-      return;
-    }
-    */
-
-    /*
-    // std::cerr << "# " << index << std::endl;
-    entry_header* h = (entry_header*)&entries_[index];
-    h->ae.next = prev.next;
-    h->ae.size = h->size;
-    
-    union {
-      alloc_entry new_prev;
-      uint64_t ll;
-    } a;
-    
-    a.new_prev.next = index;
-    a.new_prev.size = prev.size;
-
-    std::cerr << "#IN1: " << pprev - entries_ << std::endl;
-    if(! __sync_bool_compare_and_swap((uint64_t*)pprev, prev.uint64(), a.ll)) {
-      std::cerr << "#IN2" << std::endl;
       release(index, retry+1);
     }
-    */
   }
 
   void* get_ptr(uint32_t index) {
@@ -219,6 +187,7 @@ private:
     if(cur.next == 0) {
       return NULL;
     }
+
     /*
     alloc_entry next;
     alloc_entry* pnext = get_next(pcur, cur, next);

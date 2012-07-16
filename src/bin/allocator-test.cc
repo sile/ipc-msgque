@@ -7,7 +7,7 @@
 #include <unistd.h>
 #include <stdlib.h>
 
-const int CHILD_NUM = 3;
+const int CHILD_NUM = 4;
 const int LOOP_COUNT = 400;
 
 void sigsegv_handler(int sig) {
@@ -25,7 +25,7 @@ void child_start(allocator& alc) {
     std::cout << "[" << getpid() << "] " << size << " => " << idx << std::endl;
 
     if(idx != 0) {
-      //if(idx != 0 && rand() % 2 != 0) {
+    //if(idx != 0 && rand() % 10 == 0) {
       usleep(rand() % 100);
       alc.release(idx);
     }
