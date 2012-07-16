@@ -7,7 +7,7 @@
 #include <unistd.h>
 #include <stdlib.h>
 
-const int CHILD_NUM = 300;
+const int CHILD_NUM = 200;
 const int LOOP_COUNT = 200;
 
 void sigsegv_handler(int sig) {
@@ -21,6 +21,7 @@ void child_start(allocator& alc) {
   
   for(int i=0; i < LOOP_COUNT; i++) {
     unsigned size = (rand() % 1024) + 1;
+
     unsigned idx = alc.allocate(size);
     std::cout << "[" << getpid() << "] " << size << " => " << idx << std::endl;
     if(idx != 0) {
@@ -28,6 +29,12 @@ void child_start(allocator& alc) {
       usleep(rand() % 100);
       alc.release(idx);
     }
+
+    /*
+    char *buf = new char[size];
+    usleep(rand() % 100);
+    delete [] buf;
+    */
   }
   std::cout << "# exit: " << getpid() << std::endl;
 }

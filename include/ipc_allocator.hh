@@ -225,13 +225,12 @@ private:
       new_cur.size = cur.size;
       new_cur.merged = cur.merged | 1;
       if(__sync_bool_compare_and_swap((uint64_t*)pcur, cur.uint64(), new_cur.uint64())) {
-        assert(!(next.merged & 2));
         alloc_entry new_next;
         new_next.next = next.next;
         new_next.size = next.size;
         new_next.merged = next.merged | 2;
         if(__sync_bool_compare_and_swap((uint64_t*)pnext, next.uint64(), new_next.uint64())) {
-          return find_candidate_prev(prev, cur, size, count+1);
+          return find_candidate_prev(pprev, prev, cur, size, count+1);
         }
       }
     }
