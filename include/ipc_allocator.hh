@@ -50,6 +50,10 @@ public:
     a.new_prev.next = prev.next + block_count;
     a.new_prev.size = prev.size; 
 
+    if(a.new_prev.next == size_ / sizeof(alloc_entry)) {
+      a.new_prev.next = 0;
+    }
+
     union {
       alloc_entry new_cur;
       uint64_t ll;
@@ -66,7 +70,9 @@ public:
       } else {
         return allocate(size);
       }
-    } 
+    } else {
+      // std::cerr << "# IN: " << cur.next << ", " << cur.size << ": " << a.new_prev.next << ", " << size_ / sizeof(alloc_entry)<< std::endl;
+    }
 
     if(__sync_bool_compare_and_swap((uint64_t*)pprev, *(uint64_t*)&prev, a.ll)) {
       // NOTE: ここでSIGKILLが送られたらメモリリークする
@@ -139,14 +145,14 @@ private:
       return find_candidate_prev(prev, cur, size);
     }
 
-    if(cur.next == 0) {
-      return NULL;
-    }
-    
     if(sizeof(entry_header) + size < cur.size) {
       return pprev;
     }
 
+    if(cur.next == 0) {
+      return NULL;
+    }
+    
     alloc_entry next;
     alloc_entry* pnext = get_next(pcur, cur, next);
     if(pnext == NULL) {
