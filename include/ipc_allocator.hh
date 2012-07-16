@@ -3,7 +3,7 @@
 
 #include <inttypes.h>
 #include <string.h>
-
+#include <stdlib.h>
 #include <assert.h>
 
 class allocator {
@@ -63,6 +63,51 @@ public:
       return index;
     } else {
       return allocate(size);
+    }
+  }
+
+  void release(uint32_t index, int retry=0) {
+    assert(retry < 500);
+    
+    candidate cand;
+    cand.pprev = &entries_[0];
+    cand.prev  = *cand.pprev;
+    
+    while(cand.prev.next < index) {
+      if(! (fill_next_entry(cand) &&
+            mark_marge_status(cand) &&
+            merge_adjacent_entries(cand))) {
+        release(index, retry+1);
+        return;
+      }
+
+      cand.pprev = cand.pcur;
+      cand.prev  = cand.cur;
+    }
+    
+    if(cand.prev.status != 0) {
+      usleep(rand() % 1000);
+      release(index, retry+1);
+      return;
+    }
+    
+    entry* new_next = &entries_[index];
+    new_next->next   = cand.prev.next;
+    new_next->status = 0;
+    
+    entry new_prev;
+    if(index == (cand.pprev-entries_) + cand.prev.size) {
+      new_prev.next = cand.prev.next;
+      new_prev.size = cand.prev.size + new_next->size;
+      new_prev.status = 0;
+    } else {
+      new_prev.next = index;
+      new_prev.size = cand.prev.size;
+      new_prev.status = 0;
+    }
+
+    if(! __sync_bool_compare_and_swap((uint64_t*)cand.pprev, cand.prev.uint64(), new_prev.uint64())) {
+      release(index, retry+1);
     }
   }
 
@@ -145,102 +190,5 @@ private:
   entry* entries_;
   const uint32_t capacity_;
 };
-/*
-  void release(uint32_t index, int retry=0) {
-    assert(retry < 1000);
-    
-    alloc_entry* pprev = &entries_[0];
-    alloc_entry prev = *pprev;
-    alloc_entry next; 
-    while(pprev != NULL && 
-          (prev.next != 0 && prev.next < index)) {
-      pprev = get_next(pprev, prev, next);
-      if(prev.next == next.next) {
-        std::cout << "@ " << prev.next << " < " << index << std::endl;
-        // dump();
-      }
-      assert(prev.next != next.next);
-      prev = next;
-    }
 
-    if(pprev == NULL) {
-      release(index, retry+1);
-      return;
-    }
-
-    if(prev.merged != 0) {
-      // TODO: merge処理追加 (無限ループ対策)
-      if(prev.merged & 1 && next.merged & 2) {
-        alloc_entry new_prev;
-        new_prev.next = next.next;
-        new_prev.size = prev.size + next.size;
-        new_prev.merged = prev.merged & 2;
-        if(next.merged & 1) {
-          new_prev.merged |= 1;
-        }
-        if(__sync_bool_compare_and_swap((uint64_t*)pprev, prev.uint64(), new_prev.uint64())) {
-          
-        } else {
-          usleep(100);
-        }
-      } else {
-        usleep(1000);
-      }
-
-      release(index, retry+1);
-      return;
-    }
-
-    if(prev.next == index) {
-      std::cout << "@@ " << prev.next << " == " << index << std::endl;
-    }
-    assert(prev.next != index);
-
-    entry_header* h = (entry_header*)&entries_[index];
-    h->ae.next = prev.next;
-    h->ae.size = h->size;
-    h->ae.merged = 0;
-    
-    alloc_entry new_prev;
-    new_prev.next = index;
-    new_prev.size = prev.size;
-    new_prev.merged = 0;
-
-    if(new_prev.next == (pprev-entries_)+prev.size/sizeof(alloc_entry)) {
-      new_prev.next = prev.next;
-      new_prev.size = prev.size + h->size;
-    }
-
-    if(! __sync_bool_compare_and_swap((uint64_t*)pprev, prev.uint64(), new_prev.uint64())) {
-      release(index, retry+1);
-    }
-  }
-
-  void* get_ptr(uint32_t index) {
-    return (void*)((char*)&entries_[index] + sizeof(entry_header));
-  }
-
-  void dump() {
-    std::cout << "--------------" << std::endl;
-    alloc_entry* head = &entries_[0];
-    for(;;) {
-      std::cout << "[" << head-entries_ << "] " << head->next << ", " << head->size << ", " << head->merged << std::endl;
-      if(head->next == 0) {
-        break;
-      }
-      head = &entries_[head->next];
-    }
-  }
-
-private:
-
-private:
-  void* ptr_;
-  alloc_entry* entries_;
-  uint32_t size_;
-
-  // TODO: total_size;
-  // TODO: free_size;
-};
-*/
 #endif
