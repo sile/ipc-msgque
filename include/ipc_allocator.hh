@@ -44,56 +44,21 @@ public:
     if(pprev == NULL) {
       return 0;
     }
-
-    union {
-      alloc_entry new_prev;
-      uint64_t ll;
-    } a;
-
-    a.new_prev.next = prev.next + block_count;
-    a.new_prev.size = prev.size; 
-
-    if(a.new_prev.next == size_ / sizeof(alloc_entry)) {
-      a.new_prev.next = 0;
+    alloc_entry* pcur = &entries_[prev.next];
+    if(pprev->uint64() != prev.uint64()) {
+      return allocate(size);
     }
-
-    union {
-      alloc_entry new_cur;
-      uint64_t ll;
-    } b;
-    b.new_cur.next = cur.next;
-    b.new_cur.size = cur.size - block_count * sizeof(alloc_entry);
     
-    // 
-    alloc_entry* pcur = entries_[prev.next];
-    
-    
-    if(b.new_cur.size != 0) {
-      alloc_entry _ig;
-      alloc_entry next;
-      alloc_entry* pnext = get_next(&a.new_prev, _ig, next);
-      if(pprev->uint64() == prev.uint64() && // pnextの領域は未使用か
-         entries_[prev.next].uint64() == cur.uint64() && 
-         __sync_bool_compare_and_swap((uint64_t*)pnext, *(uint64_t*)&next, b.ll)) {
-      } else {
-        return allocate(size);
-      }
-    } else {
-      a.new_prev.next = cur.next;
-      std::cerr << "@ IN: " << cur.next << ", " << cur.size << ": " << a.new_prev.next << ", " << size_ / sizeof(alloc_entry)<< std::endl;
-    }
+    alloc_entry new_cur;
+    new_cur.next = cur.next;
+    new_cur.size = cur.size - (block_count * sizeof(alloc_entry));
 
-    assert(a.new_prev.next != b.new_cur.next);
-
-    assert(! (pprev->uint64() == prev.uint64() && 
-              entries_[prev.next].uint64() != cur.uint64()));
-
-    if(__sync_bool_compare_and_swap((uint64_t*)pprev, prev.uint64(), a.ll)) {
-      // NOTE: ここでSIGKILLが送られたらメモリリークする
-      entry_header* h = (entry_header*)&entries_[prev.next];
+    if(__sync_bool_compare_and_swap((uint64_t*)pcur, cur.uint64(), new_cur.uint64())) {
+      uint32_t index = new_cur.next + new_cur.size / sizeof(alloc_entry);
+      entry_header* h = (entry_header*)&entries_[index];
       h->size = block_count * sizeof(alloc_entry);
 
-      return prev.next;
+      return index;
     } else {
       return allocate(size);
     }
