@@ -27,7 +27,7 @@ void child_start(allocator& alc) {
     if(idx != 0) {
     //if(idx != 0 && rand() % 10 == 0) {
       usleep(rand() % 100);
-      alc.release(idx);
+      //alc.release(idx);
     }
 
     /*
@@ -39,6 +39,7 @@ void child_start(allocator& alc) {
   std::cout << "# exit: " << getpid() << std::endl;
 }
 
+
 int main() {
   mmap_t mm(1024*512*10);
   if(! mm) {
@@ -47,15 +48,17 @@ int main() {
   }
   
   allocator alc(mm.ptr<void>(), mm.size());
+  alc.init();
   signal(SIGSEGV, sigsegv_handler);
-
+  /*
   for(int i=0; i < CHILD_NUM; i++) {
     if(fork() == 0) {
       child_start(alc);
       return 0;
     }
   }
-  //child_start(alc);
+  */
+  child_start(alc);
 
   /*
   int i = alc.allocate(307);

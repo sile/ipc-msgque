@@ -6,68 +6,146 @@
 
 #include <assert.h>
 
-struct alloc_entry {
-  uint32_t next;
-  uint32_t size:30; 
-  uint32_t merged:2;
-  
-  uint64_t uint64() const { return *(uint64_t*)this; }
-};
-
-struct entry_header {
-  alloc_entry ae;
-  uint32_t size;
-  // uint32_t isize; // inversed size
-  // TODO: timestamp
-};
-
 class allocator {
+  struct entry {
+    uint32_t next;
+    uint32_t size:30; 
+    uint32_t status:2;
+
+    entry() {}
+    entry(uint32_t next, uint32_t size, uint32_t status=0) 
+      : next(next), size(size), status(status) {}
+    uint64_t uint64() const { return *(uint64_t*)this; }
+  };
+
+  struct candidate {
+    entry* pprev;
+    entry  prev;
+    entry* pcur;
+    entry  cur;
+  };
+
 public:
-  allocator(void* ptr, uint32_t size) : ptr_(ptr), entries_((alloc_entry*)ptr), size_(size) {
-    // TODO: 初期化は別メソッドに分ける (多重初期化防止も含めて)
-    entries_[0].next = 1;
-    entries_[0].size = 0;
-    entries_[0].merged = 0;
-
-    entries_[1].next = 0;
-    entries_[1].size = size_-sizeof(alloc_entry);
-    entries_[1].merged = 0;
+  allocator(void* ptr, uint32_t size) 
+    : entries_((entry*)ptr), 
+      capacity_(size / sizeof(entry)) {
+    assert(capacity_ > 2);
   }
-  
-  uint32_t allocate(uint32_t size) {
-    if(size == 0) { 
+
+  void init() {
+    entries_[0].next   = 1;
+    entries_[0].size   = 0;
+    entries_[0].status = 0;
+
+    entries_[1].next   = capacity_;
+    entries_[1].size   = capacity_ - 1;
+    entries_[1].status = 0;
+  }
+
+  uint32_t allocate(uint32_t byte_size) {
+    if(byte_size == 0) {
       return 0;
     }
     
-    uint32_t block_count = ((size+sizeof(entry_header)) / sizeof(alloc_entry)) + 1; // XXX: 適当
-
-    alloc_entry cur;
-    alloc_entry prev;
-    alloc_entry* pprev = find_candidate_prev(prev, cur, block_count*sizeof(alloc_entry)); //size);
-    if(pprev == NULL) {
+    uint32_t size = ((byte_size+sizeof(entry)-1) / sizeof(entry)) + 1;
+    
+    candidate cand;
+    if(find_candidate(cand, size) == false) {
       return 0;
     }
-    alloc_entry* pcur = &entries_[prev.next];
-    if(pprev->uint64() != prev.uint64()) {
-      return allocate(size);
-    }
+
+    entry new_cur(cand.cur.next,
+                  cand.cur.size - size);
     
-    alloc_entry new_cur;
-    new_cur.next = cur.next;
-    new_cur.size = cur.size - (block_count * sizeof(alloc_entry));
-    new_cur.merged = 0;
-
-    if(__sync_bool_compare_and_swap((uint64_t*)pcur, cur.uint64(), new_cur.uint64())) {
-      uint32_t index = prev.next + new_cur.size / sizeof(alloc_entry);
-      entry_header* h = (entry_header*)&entries_[index];
-      h->size = block_count * sizeof(alloc_entry);
-
+    if(__sync_bool_compare_and_swap((uint64_t*)cand.pcur, cand.cur.uint64(), new_cur.uint64())) {
+      uint32_t index = cand.pcur-entries_ + new_cur.size;
+      entries_[index].size = size;
       return index;
     } else {
       return allocate(size);
     }
   }
+
+private:
+  bool find_candidate(candidate& cand, uint32_t size, int retry=0) {
+    cand.pprev = &entries_[0];
+    cand.prev  = *cand.pprev;
+    return find_candidate2(cand, size, retry);
+  }
+
+  bool find_candidate2(candidate& cand, uint32_t size, int retry) {
+    assert(retry < 100);
+    
+    if(fill_next_entry(cand) == false) {
+      return find_candidate(cand, size, retry+1);
+    }
+
+    if(mark_marge_status(cand) == false) {
+      return find_candidate(cand, size, retry+1);
+    }
+    
+    if(merge_adjacent_entries(cand) == false) {
+      return find_candidate(cand, size, retry+1);
+    }
+
+    if(cand.cur.status == 0 && size < cand.cur.size) {
+      return true;
+    }
+
+    if(cand.cur.next >= capacity_) {
+      return false;
+    }
+
+    cand.pprev = cand.pcur;
+    cand.prev  = cand.cur;
+    return find_candidate2(cand, size, retry);
+  }
   
+  bool fill_next_entry(candidate& cand) {
+    cand.pcur = &entries_[cand.prev.next];
+    cand.cur  = *cand.pcur;
+    return cand.pprev->uint64() == cand.prev.uint64();
+  }
+
+  bool merge_adjacent_entries(candidate& cand) {
+    if(!(cand.prev.status & 1 && cand.cur.status & 2)) {
+      return true;
+    }
+    assert(cand.prev.next == (cand.pprev-entries_) + cand.prev.size);
+
+    entry new_prev(cand.cur.next,
+                   cand.prev.size + cand.cur.size,
+                   cand.prev.status & 2 | cand.cur.status & 1);
+    
+    return __sync_bool_compare_and_swap((uint64_t*)cand.pprev, cand.prev.uint64(), new_prev.uint64());
+  }
+
+  bool mark_marge_status(candidate& cand) {
+    if(cand.prev.next == (cand.pprev-entries_) + cand.prev.size) {
+      entry new_prev(cand.prev.next,
+                     cand.prev.size,
+                     cand.prev.status | 1);
+      if(__sync_bool_compare_and_swap((uint64_t*)cand.pprev, cand.prev.uint64(), new_prev.uint64())) {
+        cand.prev = new_prev;
+
+        entry new_cur(cand.cur.next,
+                      cand.cur.size,
+                      cand.cur.status | 2);
+        if(__sync_bool_compare_and_swap((uint64_t*)cand.pcur, cand.cur.uint64(), new_cur.uint64())) {
+          cand.cur = new_cur;
+          return true;
+        }
+      }
+      return false;
+    }
+    return true;
+  }
+
+private:  
+  entry* entries_;
+  const uint32_t capacity_;
+};
+/*
   void release(uint32_t index, int retry=0) {
     assert(retry < 1000);
     
@@ -155,88 +233,6 @@ public:
   }
 
 private:
-  alloc_entry* get_next(alloc_entry* pe, alloc_entry& e, alloc_entry& next) {
-    e = *pe;
-    alloc_entry* pnext = &entries_[e.next];
-    next = *pnext;
-    if(e.uint64() == pe->uint64()) {
-      return pnext;
-    } else {
-      return NULL;
-    }
-  }
-
-  alloc_entry* find_candidate_prev(alloc_entry& prev, alloc_entry& cur, uint32_t size, int count=0) {
-    alloc_entry* head = &entries_[0];
-    return find_candidate_prev(head, prev, cur, size, count);
-  }
-
-  alloc_entry* find_candidate_prev(alloc_entry* pprev, alloc_entry& prev, alloc_entry& cur, uint32_t size, int count) {
-    assert(count < 1000);
-
-    alloc_entry* pcur = get_next(pprev, prev, cur);
-    if(pcur == NULL) {
-      return find_candidate_prev(prev, cur, size, count+1);
-    }
-
-    if(prev.merged & 1 && cur.merged & 2) {
-      //assert(pprev->uint64() == prev.uint64());
-      if(! (prev.next == (pprev-entries_)+prev.size/sizeof(alloc_entry))) {
-        std::cerr << "## " <<  prev.next << ", " << (pprev-entries_) << ", " << prev.size/sizeof(alloc_entry) << std::endl;
-        std::cerr << "### " << cur.merged << ", " << prev.merged << std::endl;
-      }
-      //assert(prev.next == (pprev-entries_)+prev.size/sizeof(alloc_entry));
-
-      alloc_entry new_prev;
-      new_prev.next = cur.next;
-      new_prev.size = prev.size + cur.size;
-      new_prev.merged = prev.merged & 2;
-      if(cur.merged & 1) {
-        new_prev.merged |= 1;
-      }
-      if(__sync_bool_compare_and_swap((uint64_t*)pprev, prev.uint64(), new_prev.uint64())) {
-        return find_candidate_prev(pprev, prev, cur, size, count+1);
-      }
-      return find_candidate_prev(prev, cur, size, count+1);
-    }
-
-    if(cur.merged == 0 && size < cur.size) {
-      return pprev;
-    }
-
-    if(cur.next == 0) {
-      return NULL;
-    }
-
-    alloc_entry next;
-    alloc_entry* pnext = get_next(pcur, cur, next);
-    if(pnext == NULL) {
-      return find_candidate_prev(prev, cur, size, count+1);
-    }
-
-    if(cur.merged & 1 && next.merged & 2) {
-      // XXX: 複雑
-      return find_candidate_prev(pcur, prev, cur, size, count+1);
-    }
-
-    if(cur.next == (pcur-entries_)+cur.size/sizeof(alloc_entry)) {
-      alloc_entry new_cur;
-      new_cur.next = cur.next;
-      new_cur.size = cur.size;
-      new_cur.merged = cur.merged | 1;
-      if(__sync_bool_compare_and_swap((uint64_t*)pcur, cur.uint64(), new_cur.uint64())) {
-        alloc_entry new_next;
-        new_next.next = next.next;
-        new_next.size = next.size;
-        new_next.merged = next.merged | 2;
-        if(__sync_bool_compare_and_swap((uint64_t*)pnext, next.uint64(), new_next.uint64())) {
-          return find_candidate_prev(pprev, prev, cur, size, count+1);
-        }
-      }
-    }
-
-    return find_candidate_prev(pcur, prev, cur, size, count+1);
-  }
 
 private:
   void* ptr_;
@@ -246,5 +242,5 @@ private:
   // TODO: total_size;
   // TODO: free_size;
 };
-
+*/
 #endif

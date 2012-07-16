@@ -22,8 +22,8 @@ int main(int argc, char** argv) {
   std::cout << "# " << (i=alloca.allocate(10)) << std::endl;
   std::cout << "# " << (j=alloca.allocate(100)) << std::endl;
   std::cout << "# " << alloca.allocate(15) << std::endl;
-  alloca.release(i);
-  alloca.release(j);
+  //alloca.release(i);
+  //alloca.release(j);
   std::cout << "# " << alloca.allocate(15) << std::endl;
   std::cout << "# " << alloca.allocate(150) << std::endl;
   
