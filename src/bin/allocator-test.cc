@@ -7,11 +7,11 @@
 #include <unistd.h>
 #include <stdlib.h>
 
-const int CHILD_NUM = 700;
-const int LOOP_COUNT = 300;
+const int CHILD_NUM = 20;
+const int LOOP_COUNT = 100;
 
 void sigsegv_handler(int sig) {
-  std::cerr << "#" << getpid() << std::endl;
+  std::cerr << "#" << getpid() << ":" << sig << std::endl;
   exit(1);
 }
 
@@ -24,12 +24,10 @@ void child_start(allocator& alc) {
     unsigned idx = alc.allocate(size);
     std::cout << "[" << getpid() << "] " << size << " => " << idx << std::endl;
 
-    /*
     if(idx != 0) {
       usleep(rand() % 100);
       alc.release(idx);
     }
-    */
   }
   std::cout << "# exit: " << getpid() << std::endl;
 }
@@ -42,7 +40,6 @@ int main() {
   }
   
   allocator alc(mm.ptr<void>(), mm.size());
-
   signal(SIGSEGV, sigsegv_handler);
 
   for(int i=0; i < CHILD_NUM; i++) {
@@ -52,6 +49,21 @@ int main() {
     }
   }
   //child_start(alc);
+
+  /*
+  int i = alc.allocate(10);
+  int j = alc.allocate(10);
+  int k = alc.allocate(10);
+  std::cout << "@ " << i << std::endl;
+  std::cout << "@ " << j << std::endl;
+  std::cout << "@ " << k << std::endl;
+  alc.dump();
+  alc.release(j);
+  alc.dump();
+  std::cout << "@ " << alc.allocate(10) << std::endl;
+  alc.dump();
+  std::cout << "@ " << alc.allocate(10) << std::endl;
+  */
 
   waitid(P_ALL, 0, NULL, WEXITED);
   // alc.allocate(10);

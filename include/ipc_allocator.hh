@@ -9,6 +9,8 @@
 struct alloc_entry {
   uint32_t next;
   uint32_t size; 
+  
+  uint64_t uint64() const { return *(uint64_t*)this; }
 };
 
 struct entry_header {
@@ -71,7 +73,8 @@ public:
         return allocate(size);
       }
     } else {
-      // std::cerr << "# IN: " << cur.next << ", " << cur.size << ": " << a.new_prev.next << ", " << size_ / sizeof(alloc_entry)<< std::endl;
+      a.new_prev.next = cur.next;
+      //std::cerr << "# IN: " << cur.next << ", " << cur.size << ": " << a.new_prev.next << ", " << size_ / sizeof(alloc_entry)<< std::endl;
     }
 
     if(__sync_bool_compare_and_swap((uint64_t*)pprev, *(uint64_t*)&prev, a.ll)) {
@@ -85,11 +88,17 @@ public:
   }
   
   void release(uint32_t index) {
-    alloc_entry cur;
     alloc_entry* pprev = &entries_[0];
-    alloc_entry prev = *pprev; // XXX: 
-    while(pprev != NULL && prev.next < index) {
-      pprev = get_next(pprev, cur, prev); // XXX: 順番
+    alloc_entry prev = *pprev;
+    alloc_entry next; 
+    while(pprev != NULL && 
+          (prev.next != 0 && prev.next < index)) {
+      if(prev.next == next.next) {
+        std::cerr << "@ " << prev.next << " < " << index << std::endl;
+      }
+      assert(prev.next != next.next);
+      pprev = get_next(pprev, prev, next);
+      prev = next;
     }
 
     if(pprev == NULL) {
@@ -109,9 +118,50 @@ public:
     a.new_prev.next = index;
     a.new_prev.size = prev.size;
 
-    if(! __sync_bool_compare_and_swap((uint64_t*)pprev, *(uint64_t*)&prev, a.ll)) {
+    if(! __sync_bool_compare_and_swap((uint64_t*)pprev, prev.uint64(), a.ll)) {
       release(index);
     }
+
+    /*
+    alloc_entry* pprev = &entries_[0];
+    alloc_entry prev = *pprev;
+    int i = 0;
+    while(pprev->uint64() == prev.uint64() &&
+          (prev.next != 0 && prev.next < index)) {
+      i++;
+      if(i==1000) {
+        std::cerr << "### " << prev.next << "," << index << "," << retry << std::endl;
+      }
+      pprev = &entries_[prev.next];
+      prev = *pprev;
+    }
+
+    if(pprev == NULL) {
+      release(index, retry+1);
+      return;
+    }
+    */
+
+    /*
+    // std::cerr << "# " << index << std::endl;
+    entry_header* h = (entry_header*)&entries_[index];
+    h->ae.next = prev.next;
+    h->ae.size = h->size;
+    
+    union {
+      alloc_entry new_prev;
+      uint64_t ll;
+    } a;
+    
+    a.new_prev.next = index;
+    a.new_prev.size = prev.size;
+
+    std::cerr << "#IN1: " << pprev - entries_ << std::endl;
+    if(! __sync_bool_compare_and_swap((uint64_t*)pprev, prev.uint64(), a.ll)) {
+      std::cerr << "#IN2" << std::endl;
+      release(index, retry+1);
+    }
+    */
   }
 
   void* get_ptr(uint32_t index) {
@@ -119,15 +169,23 @@ public:
   }
 
   void dump() {
-    
+    std::cout << "--------------" << std::endl;
+    alloc_entry* head = &entries_[0];
+    for(;;) {
+      std::cout << "[" << head-entries_ << "] " << head->next << ", " << head->size << std::endl;
+      if(head->next == 0) {
+        break;
+      }
+      head = &entries_[head->next];
+    }
   }
 
 private:
   alloc_entry* get_next(alloc_entry* pe, alloc_entry& e, alloc_entry& next) {
     e = *pe;
     alloc_entry* pnext = &entries_[e.next];
+    next = *pnext;
     if(memcmp(&e, pe, sizeof(e)) == 0) {
-      next = *pnext;
       return pnext;
     } else {
       return NULL;
@@ -152,13 +210,13 @@ private:
     if(cur.next == 0) {
       return NULL;
     }
-    
+    /*
     alloc_entry next;
     alloc_entry* pnext = get_next(pcur, cur, next);
     if(pnext == NULL) {
       return find_candidate_prev(prev, cur, size);
     }
-    
+
     if(cur.next-prev.next == cur.size/sizeof(alloc_entry)) {
       union {
         alloc_entry new_cur;
@@ -170,6 +228,7 @@ private:
         return find_candidate_prev(pprev, prev, cur, size);
       }
     }
+    */
 
     return find_candidate_prev(pcur, prev, cur, size);
   }
