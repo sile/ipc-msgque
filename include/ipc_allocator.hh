@@ -54,7 +54,7 @@ public:
     new_cur.size = cur.size - (block_count * sizeof(alloc_entry));
 
     if(__sync_bool_compare_and_swap((uint64_t*)pcur, cur.uint64(), new_cur.uint64())) {
-      uint32_t index = new_cur.next + new_cur.size / sizeof(alloc_entry);
+      uint32_t index = prev.next + new_cur.size / sizeof(alloc_entry);
       entry_header* h = (entry_header*)&entries_[index];
       h->size = block_count * sizeof(alloc_entry);
 
