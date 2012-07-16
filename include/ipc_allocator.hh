@@ -8,8 +8,8 @@
 
 struct alloc_entry {
   uint32_t next;
-  uint32_t size:31; 
-  uint32_t merged:1;
+  uint32_t size:30; 
+  uint32_t merged:2;
   
   uint64_t uint64() const { return *(uint64_t*)this; }
 };
@@ -88,6 +88,12 @@ public:
       return;
     }
 
+    if(prev.merged != 0) {
+      // TODO: merge処理追加 (無限ループ対策)
+      release(index, retry+1);
+      return;
+    }
+
     if(prev.next == index) {
       std::cout << "@@ " << prev.next << " == " << index << std::endl;
     }
@@ -96,6 +102,7 @@ public:
     entry_header* h = (entry_header*)&entries_[index];
     h->ae.next = prev.next;
     h->ae.size = h->size;
+    h->ae.merged = 0;
     
     alloc_entry new_prev;
     new_prev.next = index;
@@ -115,7 +122,7 @@ public:
     std::cout << "--------------" << std::endl;
     alloc_entry* head = &entries_[0];
     for(;;) {
-      std::cout << "[" << head-entries_ << "] " << head->next << ", " << head->size << std::endl;
+      std::cout << "[" << head-entries_ << "] " << head->next << ", " << head->size << ", " << head->merged << std::endl;
       if(head->next == 0) {
         break;
       }
@@ -146,7 +153,27 @@ private:
       return find_candidate_prev(prev, cur, size);
     }
 
-    if(size < cur.size) {
+    if(prev.merged & 1 && cur.merged & 2) {
+      //assert(pprev->uint64() == prev.uint64());
+      if(! (prev.next == (pprev-entries_)+prev.size/sizeof(alloc_entry))) {
+        std::cerr << "## " <<  prev.next << ", " << (pprev-entries_) << ", " << prev.size/sizeof(alloc_entry) << std::endl;
+        std::cerr << "### " << cur.merged << ", " << prev.merged << std::endl;
+      }
+      //assert(prev.next == (pprev-entries_)+prev.size/sizeof(alloc_entry));
+
+      alloc_entry new_prev;
+      new_prev.next = cur.next;
+      new_prev.size = prev.size + cur.size;
+      new_prev.merged = prev.merged & 2;
+      if(cur.merged & 1) {
+        new_prev.merged |= 1;
+      }
+      if(__sync_bool_compare_and_swap((uint64_t*)pprev, prev.uint64(), new_prev.uint64())) {
+      }
+      return find_candidate_prev(prev, cur, size);
+    }
+
+    if(cur.merged == 0 && size < cur.size) {
       return pprev;
     }
 
@@ -160,18 +187,26 @@ private:
       return find_candidate_prev(prev, cur, size);
     }
 
-    if(cur.next == (pcur-entries_)+cur.size/sizeof(alloc_entry)) {
-      next.merged = 1;
-      alloc_entry new_cur;
-      new_cur.next = next.next;
-      new_cur.size = cur.size + next.size;
-      if(pnext->uint64() == next.uint64() &&
-         __sync_bool_compare_and_swap((uint64_t*)pcur, cur.uint64(), new_cur.uint64())) {
-        assert(pnext->uint64() == next.uint64());
-        return find_candidate_prev(pprev, prev, cur, size);
-      }
+    if(cur.merged & 1 && next.merged & 2) {
+      // XXX: 複雑
+      return find_candidate_prev(pcur, prev, cur, size);
     }
 
+    if(cur.next == (pcur-entries_)+cur.size/sizeof(alloc_entry)) {
+      alloc_entry new_cur;
+      new_cur.next = cur.next;
+      new_cur.size = cur.size;
+      new_cur.merged = cur.merged | 1;
+      if(__sync_bool_compare_and_swap((uint64_t*)pcur, cur.uint64(), new_cur.uint64())) {
+        alloc_entry new_next;
+        new_next.next = next.next;
+        new_next.size = next.size;
+        new_next.merged = next.merged | 2;
+        if(__sync_bool_compare_and_swap((uint64_t*)pnext, next.uint64(), new_next.uint64())) {
+          return find_candidate_prev(prev, cur, size);          
+        }
+      }
+    }
 
     return find_candidate_prev(pcur, prev, cur, size);
   }

@@ -64,7 +64,6 @@ int main() {
   alc.dump();
   alc.release(k);
   */
-
   /*
   int i = alc.allocate(10);
   int j = alc.allocate(10);
@@ -78,6 +77,19 @@ int main() {
   std::cout << "@ " << alc.allocate(10) << std::endl;
   alc.dump();
   std::cout << "@ " << alc.allocate(10) << std::endl;
+  */
+  /*
+  alc.dump();
+  std::cout << std::endl;  
+  int is[] = {300,300,300,300,300};
+  for(int i=0; i < sizeof(is)/sizeof(int); i++) {
+    int k = alc.allocate(is[i]);
+    std::cout << "# " << is[i] << " => " << k << std::endl;
+    alc.dump();
+    alc.release(k);
+    alc.dump();
+    std::cout << std::endl;
+  }
   */
 
   waitid(P_ALL, 0, NULL, WEXITED);
