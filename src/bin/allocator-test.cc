@@ -7,7 +7,7 @@
 #include <unistd.h>
 #include <stdlib.h>
 
-const int CHILD_NUM = 100;
+const int CHILD_NUM = 200;
 const int LOOP_COUNT = 200;
 
 void sigsegv_handler(int sig) {

@@ -142,15 +142,17 @@ private:
     }
   }
 
-  alloc_entry* find_candidate_prev(alloc_entry& prev, alloc_entry& cur, uint32_t size) {
+  alloc_entry* find_candidate_prev(alloc_entry& prev, alloc_entry& cur, uint32_t size, int count=0) {
     alloc_entry* head = &entries_[0];
-    return find_candidate_prev(head, prev, cur, size);
+    return find_candidate_prev(head, prev, cur, size, count);
   }
 
-  alloc_entry* find_candidate_prev(alloc_entry* pprev, alloc_entry& prev, alloc_entry& cur, uint32_t size) {
+  alloc_entry* find_candidate_prev(alloc_entry* pprev, alloc_entry& prev, alloc_entry& cur, uint32_t size, int count) {
+    assert(count < 1000);
+
     alloc_entry* pcur = get_next(pprev, prev, cur);
     if(pcur == NULL) {
-      return find_candidate_prev(prev, cur, size);
+      return find_candidate_prev(prev, cur, size, count+1);
     }
 
     if(prev.merged & 1 && cur.merged & 2) {
@@ -170,7 +172,7 @@ private:
       }
       if(__sync_bool_compare_and_swap((uint64_t*)pprev, prev.uint64(), new_prev.uint64())) {
       }
-      return find_candidate_prev(prev, cur, size);
+      return find_candidate_prev(prev, cur, size, count+1);
     }
 
     if(cur.merged == 0 && size < cur.size) {
@@ -184,12 +186,12 @@ private:
     alloc_entry next;
     alloc_entry* pnext = get_next(pcur, cur, next);
     if(pnext == NULL) {
-      return find_candidate_prev(prev, cur, size);
+      return find_candidate_prev(prev, cur, size, count+1);
     }
 
     if(cur.merged & 1 && next.merged & 2) {
       // XXX: 複雑
-      return find_candidate_prev(pcur, prev, cur, size);
+      return find_candidate_prev(pcur, prev, cur, size, count+1);
     }
 
     if(cur.next == (pcur-entries_)+cur.size/sizeof(alloc_entry)) {
@@ -203,12 +205,12 @@ private:
         new_next.size = next.size;
         new_next.merged = next.merged | 2;
         if(__sync_bool_compare_and_swap((uint64_t*)pnext, next.uint64(), new_next.uint64())) {
-          return find_candidate_prev(prev, cur, size);          
+          return find_candidate_prev(prev, cur, size, count+1);
         }
       }
     }
 
-    return find_candidate_prev(pcur, prev, cur, size);
+    return find_candidate_prev(pcur, prev, cur, size, count+1);
   }
 
 private:
