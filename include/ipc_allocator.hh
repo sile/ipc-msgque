@@ -69,6 +69,8 @@ public:
   }
   
   void release(uint32_t index, int retry=0) {
+    assert(retry < 1000);
+    
     alloc_entry* pprev = &entries_[0];
     alloc_entry prev = *pprev;
     alloc_entry next; 
@@ -90,6 +92,23 @@ public:
 
     if(prev.merged != 0) {
       // TODO: merge処理追加 (無限ループ対策)
+      if(prev.merged & 1 && next.merged & 2) {
+        alloc_entry new_prev;
+        new_prev.next = next.next;
+        new_prev.size = prev.size + next.size;
+        new_prev.merged = prev.merged & 2;
+        if(next.merged & 1) {
+          new_prev.merged |= 1;
+        }
+        if(__sync_bool_compare_and_swap((uint64_t*)pprev, prev.uint64(), new_prev.uint64())) {
+          
+        } else {
+          usleep(100);
+        }
+      } else {
+        usleep(1000);
+      }
+
       release(index, retry+1);
       return;
     }
@@ -108,6 +127,11 @@ public:
     new_prev.next = index;
     new_prev.size = prev.size;
     new_prev.merged = 0;
+
+    if(new_prev.next == (pprev-entries_)+prev.size/sizeof(alloc_entry)) {
+      new_prev.next = prev.next;
+      new_prev.size = prev.size + h->size;
+    }
 
     if(! __sync_bool_compare_and_swap((uint64_t*)pprev, prev.uint64(), new_prev.uint64())) {
       release(index, retry+1);
@@ -171,6 +195,7 @@ private:
         new_prev.merged |= 1;
       }
       if(__sync_bool_compare_and_swap((uint64_t*)pprev, prev.uint64(), new_prev.uint64())) {
+        return find_candidate_prev(pprev, prev, cur, size, count+1);
       }
       return find_candidate_prev(prev, cur, size, count+1);
     }
@@ -200,6 +225,7 @@ private:
       new_cur.size = cur.size;
       new_cur.merged = cur.merged | 1;
       if(__sync_bool_compare_and_swap((uint64_t*)pcur, cur.uint64(), new_cur.uint64())) {
+        assert(!(next.merged & 2));
         alloc_entry new_next;
         new_next.next = next.next;
         new_next.size = next.size;
