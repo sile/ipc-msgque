@@ -8,7 +8,8 @@
 
 struct alloc_entry {
   uint32_t next;
-  uint32_t size; 
+  uint32_t size:31; 
+  uint32_t merged:1;
   
   uint64_t uint64() const { return *(uint64_t*)this; }
 };
@@ -26,9 +27,11 @@ public:
     // TODO: 初期化は別メソッドに分ける (多重初期化防止も含めて)
     entries_[0].next = 1;
     entries_[0].size = 0;
+    entries_[0].merged = 0;
 
     entries_[1].next = 0;
     entries_[1].size = size_-sizeof(alloc_entry);
+    entries_[1].merged = 0;
   }
   
   uint32_t allocate(uint32_t size) {
@@ -52,6 +55,7 @@ public:
     alloc_entry new_cur;
     new_cur.next = cur.next;
     new_cur.size = cur.size - (block_count * sizeof(alloc_entry));
+    new_cur.merged = 0;
 
     if(__sync_bool_compare_and_swap((uint64_t*)pcur, cur.uint64(), new_cur.uint64())) {
       uint32_t index = prev.next + new_cur.size / sizeof(alloc_entry);
@@ -93,15 +97,12 @@ public:
     h->ae.next = prev.next;
     h->ae.size = h->size;
     
-    union {
-      alloc_entry new_prev;
-      uint64_t ll;
-    } a;
-    
-    a.new_prev.next = index;
-    a.new_prev.size = prev.size;
+    alloc_entry new_prev;
+    new_prev.next = index;
+    new_prev.size = prev.size;
+    new_prev.merged = 0;
 
-    if(! __sync_bool_compare_and_swap((uint64_t*)pprev, prev.uint64(), a.ll)) {
+    if(! __sync_bool_compare_and_swap((uint64_t*)pprev, prev.uint64(), new_prev.uint64())) {
       release(index, retry+1);
     }
   }
@@ -153,25 +154,24 @@ private:
       return NULL;
     }
 
-    /*
     alloc_entry next;
     alloc_entry* pnext = get_next(pcur, cur, next);
     if(pnext == NULL) {
       return find_candidate_prev(prev, cur, size);
     }
 
-    if(cur.next-prev.next == cur.size/sizeof(alloc_entry)) {
-      union {
-        alloc_entry new_cur;
-        uint64_t ll;
-      } a;
-      a.new_cur.next = next.next;
-      a.new_cur.size = cur.size + next.size;
-      if(__sync_bool_compare_and_swap((uint64_t*)pcur, *(uint64_t*)&cur, a.ll)) {
+    if(cur.next == (pcur-entries_)+cur.size/sizeof(alloc_entry)) {
+      next.merged = 1;
+      alloc_entry new_cur;
+      new_cur.next = next.next;
+      new_cur.size = cur.size + next.size;
+      if(pnext->uint64() == next.uint64() &&
+         __sync_bool_compare_and_swap((uint64_t*)pcur, cur.uint64(), new_cur.uint64())) {
+        assert(pnext->uint64() == next.uint64());
         return find_candidate_prev(pprev, prev, cur, size);
       }
     }
-    */
+
 
     return find_candidate_prev(pcur, prev, cur, size);
   }

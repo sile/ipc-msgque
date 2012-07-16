@@ -15,7 +15,7 @@
 class mmap_t {
 public:
   mmap_t(const std::string& filepath, size_t size, mode_t mode=0666) {
-    open(filepath.c_str(), O_CREAT|O_RDWR, mode);
+    open(filepath.c_str(), O_CREAT|O_RDWR, mode); // TODO:
   }
 
   mmap_t(size_t size) : ptr_(NULL), size_(0) {
