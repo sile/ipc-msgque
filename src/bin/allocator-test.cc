@@ -7,8 +7,13 @@
 #include <unistd.h>
 #include <stdlib.h>
 
-const int CHILD_NUM = 20;
+const int CHILD_NUM = 500;
 const int LOOP_COUNT = 100;
+
+void sigsegv_handler(int sig) {
+  std::cerr << "#" << getpid() << std::endl;
+  exit(1);
+}
 
 void child_start(allocator& alc) {
   std::cout << "# child: " << getpid() << std::endl;
@@ -19,20 +24,22 @@ void child_start(allocator& alc) {
     unsigned idx = alc.allocate(size);
     std::cout << "[" << getpid() << "] " << size << " => " << idx << std::endl;
     
-    usleep(rand() % 100);
-    alc.release(idx);
+    //usleep(rand() % 100);
+    //alc.release(idx);
   }
   std::cout << "# exit: " << getpid() << std::endl;
 }
 
 int main() {
-  mmap_t mm(1024*512);
+  mmap_t mm(1024*512*10);
   if(! mm) {
     std::cerr << "mmap() failed" << std::endl;
     return 1;
   }
   
   allocator alc(mm.ptr<void>(), mm.size());
+
+  signal(SIGSEGV, sigsegv_handler);
 
   for(int i=0; i < CHILD_NUM; i++) {
     if(fork() == 0) {
@@ -42,5 +49,6 @@ int main() {
   }
 
   waitid(P_ALL, 0, NULL, WEXITED);
+  // alc.allocate(10);
   return 0;
 }

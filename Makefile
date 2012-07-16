@@ -2,7 +2,7 @@ all: msgque-test allocator-test
 
 allocator-test:
 	mkdir -p bin
-	g++ -Iinclude -O2 -o bin/allocator-test src/bin/allocator-test.cc
+	g++ -Iinclude -g -o bin/allocator-test src/bin/allocator-test.cc
 
 msgque-test:
 

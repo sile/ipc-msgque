@@ -4,6 +4,8 @@
 #include <inttypes.h>
 #include <string.h>
 
+#include <assert.h>
+
 struct alloc_entry {
   uint32_t next;
   uint32_t size; 
@@ -64,7 +66,7 @@ public:
       } else {
         return allocate(size);
       }
-    }
+    } 
 
     if(__sync_bool_compare_and_swap((uint64_t*)pprev, *(uint64_t*)&prev, a.ll)) {
       // NOTE: ここでSIGKILLが送られたらメモリリークする
@@ -118,8 +120,8 @@ private:
   alloc_entry* get_next(alloc_entry* pe, alloc_entry& e, alloc_entry& next) {
     e = *pe;
     alloc_entry* pnext = &entries_[e.next];
-    next = *pnext;
     if(memcmp(&e, pe, sizeof(e)) == 0) {
+      next = *pnext;
       return pnext;
     } else {
       return NULL;
@@ -137,20 +139,20 @@ private:
       return find_candidate_prev(prev, cur, size);
     }
 
-    if(sizeof(entry_header) + size < cur.size) {
-      return pprev;
-    }
-
     if(cur.next == 0) {
       return NULL;
     }
     
+    if(sizeof(entry_header) + size < cur.size) {
+      return pprev;
+    }
+
     alloc_entry next;
     alloc_entry* pnext = get_next(pcur, cur, next);
     if(pnext == NULL) {
       return find_candidate_prev(prev, cur, size);
     }
-
+    
     if(cur.next-prev.next == cur.size/sizeof(alloc_entry)) {
       union {
         alloc_entry new_cur;
