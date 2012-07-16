@@ -36,9 +36,11 @@ public:
       return 0;
     }
     
+    uint32_t block_count = ((size+sizeof(entry_header)) / sizeof(alloc_entry)) + 1; // XXX: 適当
+
     alloc_entry cur;
     alloc_entry prev;
-    alloc_entry* pprev = find_candidate_prev(prev, cur, size);
+    alloc_entry* pprev = find_candidate_prev(prev, cur, block_count*sizeof(alloc_entry)); //size);
     if(pprev == NULL) {
       return 0;
     }
@@ -47,7 +49,6 @@ public:
       alloc_entry new_prev;
       uint64_t ll;
     } a;
-    uint32_t block_count = ((size+sizeof(entry_header)) / sizeof(alloc_entry)) + 1; // XXX: 適当
 
     a.new_prev.next = prev.next + block_count;
     a.new_prev.size = prev.size; 
@@ -67,7 +68,7 @@ public:
       alloc_entry _ig;
       alloc_entry next;
       alloc_entry* pnext = get_next(&a.new_prev, _ig, next);
-      if(memcmp(pprev, &prev, sizeof(prev)) == 0 && // pnextの領域は未使用か
+      if(pprev->uint64() == prev.uint64() && // pnextの領域は未使用か
          __sync_bool_compare_and_swap((uint64_t*)pnext, *(uint64_t*)&next, b.ll)) {
       } else {
         return allocate(size);
@@ -93,11 +94,12 @@ public:
     alloc_entry next; 
     while(pprev != NULL && 
           (prev.next != 0 && prev.next < index)) {
+      pprev = get_next(pprev, prev, next);
       if(prev.next == next.next) {
-        std::cerr << "@ " << prev.next << " < " << index << std::endl;
+        std::cout << "@ " << prev.next << " < " << index << std::endl;
+        dump();
       }
       assert(prev.next != next.next);
-      pprev = get_next(pprev, prev, next);
       prev = next;
     }
 
@@ -105,6 +107,13 @@ public:
       release(index);
       return;
     }
+
+    if(prev.next == index) {
+      std::cout << "@@ " << prev.next << " == " << index << std::endl;
+      entry_header* h1 = (entry_header*)&entries_[index];
+      std::cout << "@@@ " << prev.size << " == " << h1->size << std::endl;
+    }
+    assert(prev.next != index);
 
     entry_header* h = (entry_header*)&entries_[index];
     h->ae.next = prev.next;
@@ -185,7 +194,7 @@ private:
     e = *pe;
     alloc_entry* pnext = &entries_[e.next];
     next = *pnext;
-    if(memcmp(&e, pe, sizeof(e)) == 0) {
+    if(e.uint64() == pe->uint64()) {
       return pnext;
     } else {
       return NULL;
@@ -203,7 +212,7 @@ private:
       return find_candidate_prev(prev, cur, size);
     }
 
-    if(sizeof(entry_header) + size < cur.size) {
+    if(size < cur.size) {
       return pprev;
     }
 
