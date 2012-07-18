@@ -3,35 +3,55 @@
 
 #include <iostream>
 
-bool msgque_queue_t::push(uint32_t value, allocator& alc) {
-  uint32_t idx = alc.allocate(sizeof(cons_t));
-  if(idx == 0) {
+bool msgque_queue_t::push(uint32_t value) {
+  uint32_t l_read = next_read;
+  uint32_t l_write = next_write;
+
+  if(l_read == (next_write+1)%size) {
     return false;
   }
+
+  que_ent_t *pent = &entries[l_write];
+  que_ent_t ent = *pent;
+  if(ent.flag == 1) {
+    __sync_bool_compare_and_swap(&next_write, l_write, (l_write+1)%size);
+    return push(value);
+  }
   
-  cons_t* entry = alc.ptr<cons_t>(idx);
-  for(;;) {
-    uint32_t l_head = head;
-    entry->car = value;
-    entry->cdr = l_head;
-    if(__sync_bool_compare_and_swap(&head, l_head, idx)) {
-      return true;
-    } 
+  que_ent_t new_ent;
+  new_ent.flag = 1;
+  new_ent.value = value;
+  if(__sync_bool_compare_and_swap((uint32_t*)pent, ent.uint32(), new_ent.uint32())) {
+    __sync_bool_compare_and_swap(&next_write, l_write, (l_write+1)%size);
+    return true;
+  } else {
+    return push(value);
   }
 }
 
-uint32_t msgque_queue_t::pop(allocator& alc) {
-  uint32_t l_head = head;
-  if(l_head == 0) {
-    return 0;
+uint32_t msgque_queue_t::pop() {
+  uint32_t l_read = next_read;
+  uint32_t l_write = next_write;
+  
+  if(l_read == l_write) {
+    return false;
   }
   
-  cons_t* next = alc.ptr<cons_t>(l_head);
-  if(__sync_bool_compare_and_swap(&head, l_head, next->cdr)) {
-    alc.release(l_head);
-    return next->car;
+  que_ent_t *pent = &entries[l_read];
+  que_ent_t ent = *pent;
+  if(ent.flag == 0) {
+    __sync_bool_compare_and_swap(&next_read, l_read, (l_read+1)%size);
+    // 別のプロセスが取得済
+    return pop();
+  }
+  
+  que_ent_t new_ent;
+  new_ent.flag = 0;
+  if(__sync_bool_compare_and_swap((uint32_t*)pent, ent.uint32(), new_ent.uint32())) {
+    __sync_bool_compare_and_swap(&next_read, l_read, (l_read+1)%size);
+    return ent.value;
   } else {
-    return pop(alc);
+    return pop();
   }
 }
 
@@ -45,7 +65,7 @@ bool msgque_t::push(const void* data, std::size_t size) {
   ((std::size_t*)buf)[0] = size;
   memcpy((char*)buf+sizeof(std::size_t), data, size);
   
-  bool ret = que_->push(index, que_alc_);
+  bool ret = que_->push(index);
   if(ret == false) {
     alc_.release(index);
     return false;
@@ -53,8 +73,14 @@ bool msgque_t::push(const void* data, std::size_t size) {
   return true;
 }
 
-msgque_data_t msgque_t::pop() {
-  uint32_t idx = que_->pop(que_alc_);
-  msgque_data_t data(alc_, idx);
-  return data;
+bool msgque_t::pop(std::string& buf) {
+  uint32_t idx = que_->pop();
+  if(idx == 0) {
+    return false;
+  }
+  
+  std::size_t size = alc_.ptr<std::size_t>(idx)[0];
+  buf.append(&alc_.ptr<char>(idx)[sizeof(std::size_t)], size);
+  alc_.release(idx);
+  return true;
 }

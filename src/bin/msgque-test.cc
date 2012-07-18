@@ -2,6 +2,7 @@
 #include <ipc_msgque.hh>
 #include <string.h>
 #include <stdlib.h>
+#include <string>
 
 int main(int argc, char** argv) {
   msgque_t que(20, 1024*32);
@@ -12,15 +13,16 @@ int main(int argc, char** argv) {
   }
 
   for(int i=0; i < argc; i++) {
-    que.push(argv[i], strlen(argv[i]));
+    que.push(argv[i], strlen(argv[i])+1);
   }
-  
+
+  std::string buf;
   for(;;) {
-    msgque_data_t msg = que.pop();
-    if(! msg) {
+    buf.clear();
+    if(! que.pop(buf)) {
       break;
     }
-    std::cout << "size=" << msg.size() << ", data=" << (const char*)msg.data() << std::endl;
+    std::cout << "size=" << buf.size() << ", data=" << buf.data() << std::endl;
   }
   
   return 0;

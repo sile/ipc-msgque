@@ -4,6 +4,7 @@
 #include "ipc_mmap.hh"
 #include "ipc_allocator.hh"
 #include <inttypes.h>
+#include <string>
 
 struct msgque_data_t {
   msgque_data_t(allocator& alc, uint32_t index) 
@@ -19,18 +20,22 @@ struct msgque_data_t {
   uint32_t index_;
 };
 
-struct cons_t {
-  uint32_t car;
-  uint32_t cdr;
+struct que_ent_t {
+  uint32_t flag:1;
+  uint32_t value:31;
+
+  uint32_t uint32() const { return *(uint32_t*)this; }
 };
 
 struct msgque_queue_t {
-  volatile uint32_t head;
-  volatile uint32_t entry_count;
-  uint32_t max_entry_count;
+  volatile uint32_t next_read;
+  volatile uint32_t next_write;
+  uint32_t size;
+  
+  que_ent_t entries[0];
 
-  bool push(uint32_t index, allocator& alc);
-  uint32_t pop(allocator& alc);
+  bool push(uint32_t index);
+  uint32_t pop();
 };
 
 class msgque_t {
@@ -45,40 +50,32 @@ public:
 
   msgque_t(size_t entry_count, size_t data_size)
     : mm_(data_size),
-      alc_(mm_.ptr<void*>(), mm_.size()),
+      alc_(mm_.ptr<void>(), mm_.size()),
       mm_que_(sizeof(msgque_queue_t) + entry_count * sizeof(uint32_t)*2), // TODO: アロケータ自体のオーバヘッドを考慮
-      que_alc_(mm_que_.ptr<void*>(), mm_que_.size())
+      que_(mm_que_.ptr<msgque_queue_t>())
   {
+    que_->size = entry_count;
   }
 
   // TODO: 自動で初期化されるようにしたい
   bool init() {
     alc_.init();
-    que_alc_.init();
-
-    uint32_t idx = que_alc_.allocate(sizeof(msgque_queue_t));
-    que_ = que_alc_.ptr<msgque_queue_t>(idx);
-        
-    que_->head = 0;
-    que_->entry_count = 0;
+    
+    que_->next_read = 0;
+    que_->next_write = 0;
+    memset(que_->entries, 0, sizeof(que_ent_t)*que_->size);
   }
   
   operator bool() const { return mm_; }
 
   bool push(const void* data, std::size_t size);
-  msgque_data_t pop();
-  // TODO: void release(
+  bool pop(std::string& buf);
 
-  // XXX: que_のメンバにすべき
-  bool is_empty() const {
-    return que_->head == 0;
-  }
 private:
   mmap_t mm_;  // mm_data_
   allocator alc_;
   
   mmap_t mm_que_;
-  allocator que_alc_;
   msgque_queue_t* que_;
 };
 
