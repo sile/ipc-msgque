@@ -1,6 +1,8 @@
 #include <ipc_msgque.hh>
 #include <string.h>
 
+#include <iostream>
+
 bool msgque_queue_t::push(uint32_t value, allocator& alc) {
   uint32_t idx = alc.allocate(sizeof(cons_t));
   if(idx == 0) {
@@ -21,9 +23,9 @@ bool msgque_queue_t::push(uint32_t value, allocator& alc) {
 uint32_t msgque_queue_t::pop(allocator& alc) {
   uint32_t l_head = head;
   if(l_head == 0) {
-    return false;
+    return 0;
   }
-
+  
   cons_t* next = alc.ptr<cons_t>(l_head);
   if(__sync_bool_compare_and_swap(&head, l_head, next->cdr)) {
     alc.release(l_head);
@@ -34,17 +36,14 @@ uint32_t msgque_queue_t::pop(allocator& alc) {
 }
 
 bool msgque_t::push(const void* data, std::size_t size) {
-  if(is_full()) {
-    return false;
-  }
-
-  uint32_t index = alc_.allocate(size);
+  uint32_t index = alc_.allocate(size + sizeof(std::size_t));
   if(index == 0) {
     return false;
   }
-  
+
   void* buf = alc_.ptr<void>(index);
-  memcpy(buf, data, size);
+  ((std::size_t*)buf)[0] = size;
+  memcpy((char*)buf+sizeof(std::size_t), data, size);
   
   bool ret = que_->push(index, que_alc_);
   if(ret == false) {
@@ -55,6 +54,7 @@ bool msgque_t::push(const void* data, std::size_t size) {
 }
 
 msgque_data_t msgque_t::pop() {
-  msgque_data_t data(NULL, 0);
+  uint32_t idx = que_->pop(que_alc_);
+  msgque_data_t data(alc_, idx);
   return data;
 }

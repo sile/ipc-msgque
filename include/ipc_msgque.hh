@@ -6,12 +6,17 @@
 #include <inttypes.h>
 
 struct msgque_data_t {
-  msgque_data_t(const void * const data, std::size_t size) : data(data), size(size) {}
+  msgque_data_t(allocator& alc, uint32_t index) 
+    : alc_(alc), index_(index) {
+  }
 
-  operator bool() const { return data != NULL; }
-
-  std::size_t size;
-  const void * const data;
+  operator bool() const { return index_ != 0; }
+  
+  void* data() const { return alc_.ptr<char>(index_)+sizeof(std::size_t); }
+  std::size_t size() const { return alc_.ptr<std::size_t>(index_)[0]; }
+  
+  allocator& alc_;
+  uint32_t index_;
 };
 
 struct cons_t {
@@ -42,14 +47,18 @@ public:
     : mm_(data_size),
       alc_(mm_.ptr<void*>(), mm_.size()),
       mm_que_(sizeof(msgque_queue_t) + entry_count * sizeof(uint32_t)*2), // TODO: アロケータ自体のオーバヘッドを考慮
-      que_alc_(mm_que_.ptr<void*>(), mm_que_.size()),
-      que_(mm_que_.ptr<msgque_queue_t>())
+      que_alc_(mm_que_.ptr<void*>(), mm_que_.size())
   {
-    que_->max_entry_count = entry_count;
   }
 
   // TODO: 自動で初期化されるようにしたい
   bool init() {
+    alc_.init();
+    que_alc_.init();
+
+    uint32_t idx = que_alc_.allocate(sizeof(msgque_queue_t));
+    que_ = que_alc_.ptr<msgque_queue_t>(idx);
+        
     que_->head = 0;
     que_->entry_count = 0;
   }
@@ -64,11 +73,6 @@ public:
   bool is_empty() const {
     return que_->head == 0;
   }
-
-  bool is_full() const {
-    return que_->entry_count >= que_->max_entry_count;
-  }
-
 private:
   mmap_t mm_;  // mm_data_
   allocator alc_;
