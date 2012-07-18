@@ -2,7 +2,7 @@
 #include <ipc_msgque.hh>
 
 int main(int argc, char** argv) {
-  msgque_t que(1024);
+  msgque_t que(10, 1024*32);
   if(! que) {
     std::cerr << "[ERROR] message queue initialization failed" << std::endl;
   }

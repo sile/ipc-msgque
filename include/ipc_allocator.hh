@@ -42,6 +42,11 @@ public:
     entries_[1].status = 0;
   }
 
+  template <class T>
+  T* ptr(uint32_t index) {
+    return (T*)&entries_[index+1];
+  }
+
   uint32_t allocate(uint32_t byte_size) {
     if(byte_size == 0) {
       return 0;
@@ -67,6 +72,7 @@ public:
   }
 
   void release(uint32_t index, int retry=0) {
+    // TODO: 既に空き領域になっていたらエラー出力
     assert(retry < 500);
     
     candidate cand;
