@@ -23,6 +23,7 @@ bool msgque_queue_t::push(uint32_t value) {
   new_ent.value = value;
   if(__sync_bool_compare_and_swap((uint32_t*)pent, ent.uint32(), new_ent.uint32())) {
     __sync_bool_compare_and_swap(&next_write, l_write, (l_write+1)%size);
+    std::cout << ":- " << l_write << "#W " << value << std::endl;
     return true;
   } else {
     return push(value);
@@ -34,7 +35,7 @@ uint32_t msgque_queue_t::pop() {
   uint32_t l_write = next_write;
   
   if(l_read == l_write) {
-    return false;
+    return 0;
   }
   
   que_ent_t *pent = &entries[l_read];
@@ -49,6 +50,8 @@ uint32_t msgque_queue_t::pop() {
   new_ent.flag = 0;
   if(__sync_bool_compare_and_swap((uint32_t*)pent, ent.uint32(), new_ent.uint32())) {
     __sync_bool_compare_and_swap(&next_read, l_read, (l_read+1)%size);
+    // std::cout << "! " << getpid() << ": " << l_read << ", " << ent.value << std::endl;
+    std::cout << ":- " << l_read << "#R " << ent.value << std::endl;
     return ent.value;
   } else {
     return pop();
@@ -58,15 +61,21 @@ uint32_t msgque_queue_t::pop() {
 bool msgque_t::push(const void* data, std::size_t size) {
   uint32_t index = alc_.allocate(size + sizeof(std::size_t));
   if(index == 0) {
+    std::cout << "! full" << std::endl;
     return false;
   }
 
   void* buf = alc_.ptr<void>(index);
   ((std::size_t*)buf)[0] = size;
   memcpy((char*)buf+sizeof(std::size_t), data, size);
-  
+
+  if(((std::size_t*)buf)[0] > 200) {
+    std::cerr << "## " << ((std::size_t*)buf)[0] << ", " << index << std::endl;
+  }
+
   bool ret = que_->push(index);
   if(ret == false) {
+    std::cout << "! release" << std::endl;
     alc_.release(index);
     return false;
   }
@@ -80,7 +89,12 @@ bool msgque_t::pop(std::string& buf) {
   }
   
   std::size_t size = alc_.ptr<std::size_t>(idx)[0];
-  buf.append(&alc_.ptr<char>(idx)[sizeof(std::size_t)], size);
+  if(size > 200) {
+    std::cerr << "## " << size << ", " << idx << std::endl;
+  }
+  assert(size < 200);
+  buf.append(alc_.ptr<char>(idx)+sizeof(std::size_t), size);
+
   alc_.release(idx);
   return true;
 }
