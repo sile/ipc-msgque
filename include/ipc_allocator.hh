@@ -61,13 +61,13 @@ public:
 
     entry new_cur(cand.cur.next,
                   cand.cur.size - size);
-    
+
     if(__sync_bool_compare_and_swap((uint64_t*)cand.pcur, cand.cur.uint64(), new_cur.uint64())) {
       uint32_t index = cand.pcur-entries_ + new_cur.size;
       entries_[index].size = size;
       return index;
     } else {
-      return allocate(size);
+      return allocate(byte_size);
     }
   }
 
@@ -168,7 +168,12 @@ private:
                    cand.prev.size + cand.cur.size,
                    cand.prev.status & 2 | cand.cur.status & 1);
     
-    return __sync_bool_compare_and_swap((uint64_t*)cand.pprev, cand.prev.uint64(), new_prev.uint64());
+    if(__sync_bool_compare_and_swap((uint64_t*)cand.pprev, cand.prev.uint64(), new_prev.uint64())) {
+      cand.prev = new_prev;
+      return fill_next_entry(cand);
+    } else {
+      return false;
+    }
   }
 
   bool mark_marge_status(candidate& cand) {

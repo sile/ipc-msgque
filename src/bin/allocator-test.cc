@@ -7,8 +7,8 @@
 #include <unistd.h>
 #include <stdlib.h>
 
-const int CHILD_NUM = 200;
-const int LOOP_COUNT = 400;
+const int CHILD_NUM = 400;
+const int LOOP_COUNT = 600;
 
 void sigsegv_handler(int sig) {
   std::cerr << "#" << getpid() << ":" << sig << std::endl;

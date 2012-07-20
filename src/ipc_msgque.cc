@@ -72,6 +72,7 @@ bool msgque_t::push(const void* data, std::size_t size) {
   if(((std::size_t*)buf)[0] > 200) {
     std::cerr << "## " << ((std::size_t*)buf)[0] << ", " << index << std::endl;
   }
+  std::cout << "* IN " << size << std::endl;
 
   bool ret = que_->push(index);
   if(ret == false) {
@@ -89,6 +90,7 @@ bool msgque_t::pop(std::string& buf) {
   }
   
   std::size_t size = alc_.ptr<std::size_t>(idx)[0];
+  std::cout << "* OUT " << size << ", " << idx << std::endl;
   if(size > 200) {
     std::cerr << "## " << size << ", " << idx << std::endl;
   }

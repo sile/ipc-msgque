@@ -7,8 +7,13 @@
 #include <sys/wait.h>
 #include <unistd.h>
 
-const int CHILD_NUM = 10;
-const int LOOP_COUNT = 100;
+const int CHILD_NUM = 200;
+const int LOOP_COUNT = 400;
+
+void sigsegv_handler(int sig) {
+  std::cerr << "#" << getpid() << ":" << sig << std::endl;
+  exit(1);
+}
 
 void gen_random_string(std::string& s, std::size_t size) {
   const char cs[] = "0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ";
@@ -20,14 +25,14 @@ void gen_random_string(std::string& s, std::size_t size) {
 
 void writer_start(msgque_t& que) {
   std::cout << "# child(writer): " << getpid() << std::endl;
-  srand(time(NULL));
+  srand(time(NULL)+getpid());
   
   for(int i=0; i < LOOP_COUNT; i++) {
     unsigned size = (rand() % 128) + 3;
     std::string s;
     gen_random_string(s, size);
     
-    if(que.push(s.c_str(), s.size()+1) == false) {
+    if(que.push(s.c_str(), s.size()) == false) {
       std::cout << "@ [" << getpid() << "] queue is full" << std::endl;
       usleep(rand() % 300);
     } else {
@@ -59,6 +64,7 @@ void reader_start(msgque_t& que) {
 int main(int argc, char** argv) {
   msgque_t que(256, 1024*1024);
   que.init();
+  signal(SIGSEGV, sigsegv_handler);
 
   if(! que) {
     std::cerr << "[ERROR] message queue initialization failed" << std::endl;
