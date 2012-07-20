@@ -38,7 +38,7 @@ void writer_start(msgque_t& que) {
     } else {
       std::cout << "@ [" << getpid() << "] write: " << s << std::endl;
     }
-    usleep(rand() % 300);
+    usleep(rand() % 400);
   }
   std::cout << "# exit: " << getpid() << std::endl;
 }
@@ -46,23 +46,23 @@ void writer_start(msgque_t& que) {
 void reader_start(msgque_t& que) {
   std::cout << "# child(reader): " << getpid() << std::endl;
   srand(time(NULL));
+  usleep(10);
   
-  for(int i=0; i < LOOP_COUNT; i++) {
+  for(int i=0; i < LOOP_COUNT*3.5; i++) {
     std::string s;
     
     if(que.pop(s) == false) {
       std::cout << "@ [" << getpid() << "] queue is empty" << std::endl;
-      usleep(rand() % 300);
+      usleep(rand() % 200);
     } else {
       std::cout << "@ [" << getpid() << "] read: " << s << std::endl;
     }
-    usleep(rand() % 300);
   }
   std::cout << "# exit: " << getpid() << std::endl;
 }
 
 int main(int argc, char** argv) {
-  msgque_t que(256, 1024*1024);
+  msgque_t que(1024*32, 1024*1024*4);
   que.init();
   signal(SIGSEGV, sigsegv_handler);
 
@@ -73,10 +73,10 @@ int main(int argc, char** argv) {
 
   for(int i=0; i < CHILD_NUM; i++) {
     if(fork() == 0) {
-      if(i % 2 == 0) {
-        writer_start(que);
-      } else {
+      if(i % 3 == 0) {
         reader_start(que);
+      } else {
+        writer_start(que);
       }
       return 0;
     }

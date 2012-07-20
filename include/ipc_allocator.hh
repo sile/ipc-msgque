@@ -63,6 +63,7 @@ public:
                   cand.cur.size - size);
 
     if(__sync_bool_compare_and_swap((uint64_t*)cand.pcur, cand.cur.uint64(), new_cur.uint64())) {
+      // NOTE: ここでSIGKILLが来たら、メモリリークする
       uint32_t index = cand.pcur-entries_ + new_cur.size;
       entries_[index].size = size;
       return index;
@@ -97,6 +98,7 @@ public:
       return;
     }
     
+    // TODO: 上の方でstatusを'回収可'にだけしておいて、実際の回収作業は他のプロセスでも可能にしておけば、安全性は向上する
     entry* new_next = &entries_[index];
     new_next->next   = cand.prev.next;
     new_next->status = 0;

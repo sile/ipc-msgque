@@ -38,6 +38,7 @@ struct msgque_queue_t {
   uint32_t pop();
 };
 
+// TODO: 「キューが満杯」等の状態が発生したことを検知できるフラグ(or フィールド)をいくつか用意しておく
 class msgque_t {
 public:
   /* TODO: 後で
