@@ -9,8 +9,8 @@
 #include <unistd.h>
 #include <stdlib.h>
 
-const int CHILD_NUM = 400;
-const int LOOP_COUNT = 1000;//0;
+const int CHILD_NUM = 40;//0;
+const int LOOP_COUNT = 100;//0;//0;
 
 void sigsegv_handler(int sig) {
   std::cerr << "#" << getpid() << ":" << sig << std::endl;
@@ -47,7 +47,9 @@ int main() {
     std::cerr << "mmap() failed" << std::endl;
     return 1;
   }
-  
+  imque::Allocator alc2(mm.ptr<void>(), mm.size());
+  alc2.init();
+
   allocator alc(mm.ptr<void>(), mm.size());
   alc.init();
   signal(SIGSEGV, sigsegv_handler);
