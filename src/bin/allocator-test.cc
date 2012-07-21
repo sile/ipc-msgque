@@ -2,13 +2,15 @@
 #include <ipc_allocator.hh>
 #include <ipc_mmap.hh>
 
+#include <imque/allocator.hh>
+
 #include <sys/types.h>
 #include <sys/wait.h>
 #include <unistd.h>
 #include <stdlib.h>
 
 const int CHILD_NUM = 400;
-const int LOOP_COUNT = 600;
+const int LOOP_COUNT = 1000;//0;
 
 void sigsegv_handler(int sig) {
   std::cerr << "#" << getpid() << ":" << sig << std::endl;
@@ -18,12 +20,12 @@ void sigsegv_handler(int sig) {
 void child_start(allocator& alc) {
   std::cout << "# child: " << getpid() << std::endl;
   srand(time(NULL));
-  
+
   for(int i=0; i < LOOP_COUNT; i++) {
     unsigned size = (rand() % 1024) + 1;
 
     unsigned idx = alc.allocate(size);
-    std::cout << "[" << getpid() << "] " << size << " => " << idx << std::endl;
+    //std::cout << "[" << getpid() << "] " << size << " => " << idx << std::endl;
     if(idx != 0) {
       usleep(rand() % 300);
       alc.release(idx);
@@ -31,7 +33,7 @@ void child_start(allocator& alc) {
 
     /*
     char *buf = new char[size];
-    usleep(rand() % 100);
+    usleep(rand() % 300);
     delete [] buf;
     */
   }

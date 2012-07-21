@@ -74,7 +74,7 @@ public:
 
   void release(uint32_t index, int retry=0) {
     // TODO: 既に空き領域になっていたらエラー出力
-    assert(retry < 500);
+    assert(retry < 10);
     
     candidate cand;
     cand.pprev = &entries_[0];
@@ -93,7 +93,6 @@ public:
     }
     
     if(cand.prev.status != 0) {
-      usleep(rand() % 1000);
       release(index, retry+1);
       return;
     }
