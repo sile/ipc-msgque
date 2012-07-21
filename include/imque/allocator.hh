@@ -4,19 +4,17 @@
 #include <inttypes.h>
 #include <cassert>
 
-
 namespace imque {
   class Allocator {
     struct Node {  // node of free-list
       uint32_t next;     // next free block index
-      uint32_t count:29; // available block count
-      uint32_t status:3;
+      uint32_t count:30; // available block count
+      uint32_t status:2;
 
       enum STATUS {
         FREE      = 0,
-        USED      = 1,
-        JOIN_HEAD = 2,
-        JOIN_TAIL = 4
+        JOIN_HEAD = 1,
+        JOIN_TAIL = 2
       };
 
       uint64_t* as_uint64_ptr() { return reinterpret_cast<uint64_t*>(this); }
@@ -125,12 +123,13 @@ namespace imque {
     template<class Callback>
     bool find_candidate(const Callback& fn, Snapshot& pred, Snapshot& curr, uint32_t retry) {
       if(retry > MAX_RETRY_COUNT) {
+        assert(retry <= MAX_RETRY_COUNT);
         return false;
       }
       
       if(get_next_snapshot(pred, curr) == false ||
          update_node_status(pred, curr) == false ||
-         merge_adjacent_nodes_if_need(pred, curr) == false) {
+         join_nodes_if_need(pred, curr) == false) {
         return find_candidate(fn, curr, retry+1);
       }
 
@@ -152,11 +151,43 @@ namespace imque {
     }
 
     bool update_node_status(Snapshot& pred, Snapshot& curr) {
+      if(pred.node().next != pred.index(nodes_) + pred.node().count) {
+        return true;
+      }
+
+      Node new_pred_node = {pred.node().next,
+                            pred.node().count,
+                            pred.node().status | Node::JOIN_HEAD};
+      if(pred.compare_and_swap(new_pred_node) == false) {
+        return false;
+      }
+      
+      Node new_curr_node = {curr.node().next,
+                            curr.node().count,
+                            curr.node().status | Node::JOIN_TAIL};
+      if(pred.compare_and_swap(new_curr_node) == false) {
+        return false;
+      }
+      
       return true;
     }
+    
+    bool join_nodes_if_need(Snapshot& pred, Snapshot& curr) {
+      if(! (pred.node().status & Node::JOIN_HEAD &&
+            curr.node().status & Node::JOIN_TAIL)) {
+        return true;
+      }
+      assert(pred.node().next == pred.index(nodes_) + pred.node().count);
 
-    bool merge_adjacent_nodes_if_need(Snapshot& pred, Snapshot& curr) {
-      return true;
+      Node new_pred_node = {curr.node().next,
+                            pred.node().count + curr.node().count,
+                            (pred.node().status & ~Node::JOIN_HEAD) |
+                            (curr.node().status & ~Node::JOIN_TAIL)};
+      if(pred.compare_and_swap(new_pred_node) == false) {
+        return false;
+      }
+      
+      return get_next_snapshot(pred, curr);
     }
 
   private:
