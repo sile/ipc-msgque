@@ -27,19 +27,30 @@ namespace imque {
       char padding[32];
     };
 
-    class NodeSnapshot {
+    class Snapshot {
     public:
-      NodeSnapshot() : ptr_(NULL) {}
-      NodeSnapshot(Node* ptr) : ptr_(ptr), val_(*ptr) {}
+      Snapshot() : ptr_(NULL) {}
+      Snapshot(Node* ptr) : ptr_(ptr), val_(*ptr) {}
       
       void update(Node* ptr) {
         ptr_ = ptr;
         val_ = *ptr;
       }
-      
+
       const Node& node() const { return val_; }
       bool isModified() const { return ptr_->as_uint64() != val_.as_uint64(); }
 
+      bool compare_and_swap(const Node& new_val) {
+        if(isModified() == false &&
+           __sync_bool_compare_and_swap(ptr_->as_uint64_ptr(), val_.as_uint64(), new_val.as_uint64())) {
+          val_ = new_val;
+          return true;
+        }
+        return false;
+      }
+
+      uint32_t index(Node* head) const { return ptr_ - head; }
+      
     private:
       Node* ptr_;
       Node  val_;
@@ -73,21 +84,46 @@ namespace imque {
 
       const uint32_t required_chunk_count = (size+sizeof(Chunk)-1) / sizeof(Chunk);
       
-      NodeSnapshot node;
-      if(find_candidate(node, required_chunk_count) == false) {
+      Snapshot cand;
+      if(find_candidate(IsEnoughChunk(required_chunk_count), cand) == false) {
         return NULL; // out of memory
       }
+
+      Node new_node = {cand.node().next,
+                       cand.node().count - required_chunk_count,
+                       Node::FREE};
       
-      return NULL;
+      if(cand.compare_and_swap(new_node) == false) {
+        return allocate(size);
+      }
+      
+      uint32_t alloced_node_index = cand.index(nodes_) + new_node.count;
+      nodes_[alloced_node_index].count = required_chunk_count;
+
+      return reinterpret_cast<void*>(&chunks_[alloced_node_index]);
     }
 
   private:
-    bool find_candidate(NodeSnapshot& node, uint32_t count, uint32_t retry=0) {
-      NodeSnapshot head(&nodes_[0]);
-      return find_candidate(head, node, count, retry);
+    class IsEnoughChunk {
+    public:
+      IsEnoughChunk(uint32_t required_chunk_count) : count(required_chunk_count) {}
+      
+      bool operator()(const Snapshot& pred, const Snapshot& curr) const {
+        return curr.node().count >= count;
+      }
+
+    private:
+      const uint32_t count;
+    };
+
+    template<class Callback>
+    bool find_candidate(const Callback& fn, Snapshot& node, uint32_t retry=0) {
+      Snapshot head(&nodes_[0]);
+      return find_candidate(fn, head, node, retry);
     }
 
-    bool find_candidate(NodeSnapshot& pred, NodeSnapshot& curr, uint32_t count, uint32_t retry=0) {
+    template<class Callback>
+    bool find_candidate(const Callback& fn, Snapshot& pred, Snapshot& curr, uint32_t retry) {
       if(retry > MAX_RETRY_COUNT) {
         return false;
       }
@@ -95,29 +131,31 @@ namespace imque {
       if(get_next_snapshot(pred, curr) == false ||
          update_node_status(pred, curr) == false ||
          merge_adjacent_nodes_if_need(pred, curr) == false) {
-        return find_candidate(curr, count, retry+1);
+        return find_candidate(fn, curr, retry+1);
       }
 
-      // TODO:
+      if(fn(pred, curr)) {
+        return true;
+      }
       
       pred = curr;
-      return find_candidate(pred, curr, count, retry);
+      return find_candidate(fn, pred, curr, retry);
     }
 
-    bool get_next_snapshot(NodeSnapshot& pred, NodeSnapshot& curr) const {
+    bool get_next_snapshot(Snapshot& pred, Snapshot& curr) const {
       if(pred.node().next == node_count_) {
         return false;
       }
 
       curr.update(&nodes_[pred.node().next]);
-      return pred.isModified();
+      return pred.isModified() == false;
     }
 
-    bool update_node_status(NodeSnapshot& pred, NodeSnapshot& curr) {
+    bool update_node_status(Snapshot& pred, Snapshot& curr) {
       return true;
     }
 
-    bool merge_adjacent_nodes_if_need(NodeSnapshot& pred, NodeSnapshot& curr) {
+    bool merge_adjacent_nodes_if_need(Snapshot& pred, Snapshot& curr) {
       return true;
     }
 

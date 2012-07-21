@@ -49,6 +49,8 @@ int main() {
   }
   imque::Allocator alc2(mm.ptr<void>(), mm.size());
   alc2.init();
+  void* aaa = alc2.allocate(100);
+  std::cout << "## " << (long long)aaa << std::endl;
 
   allocator alc(mm.ptr<void>(), mm.size());
   alc.init();
