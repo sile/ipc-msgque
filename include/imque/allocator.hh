@@ -54,7 +54,7 @@ namespace imque {
       Node  val_;
     };
 
-    static const uint32_t MAX_RETRY_COUNT = 256;
+    static const uint32_t MAX_RETRY_COUNT = 128;
 
   public:
     Allocator(void* region, uint32_t size) 
@@ -75,12 +75,12 @@ namespace imque {
       nodes_[1].status = Node::FREE;
     }
 
-    void* allocate(const uint32_t size) {
+    void* allocate(uint32_t size) {
       if(size == 0) {
         return NULL; // invalid argument
       }
 
-      const uint32_t required_chunk_count = (size+sizeof(Chunk)-1) / sizeof(Chunk);
+      uint32_t required_chunk_count = (size+sizeof(Chunk)-1) / sizeof(Chunk);
       
       Snapshot cand;
       if(find_candidate(IsEnoughChunk(required_chunk_count), cand) == false) {
@@ -101,17 +101,62 @@ namespace imque {
       return reinterpret_cast<void*>(&chunks_[alloced_node_index]);
     }
 
+    bool release(void* ptr) {
+      if(ptr < chunks_ || ptr >= chunks_ + node_count_) {
+        assert(ptr >= chunks_ && ptr < chunks_ + node_count_);
+        return true;
+      }
+
+      uint32_t node_index = reinterpret_cast<Chunk*>(ptr) - chunks_;
+      Snapshot pred;
+      if(find_candidate(IsPredecessor(node_index), pred) == false) {
+        return false;
+      }
+      assert(pred.node().status == Node::FREE);
+
+      Node* node = &nodes_[node_index];
+      Node new_pred_node = {0, 0, Node::FREE};
+      if(node_index == pred.index(nodes_) + pred.node().count) {
+        new_pred_node.next  = pred.node().next;
+        new_pred_node.count = pred.node().count + node->count;
+      } else {
+        node->next   = pred.node().next;
+        node->status = Node::FREE;
+        
+        new_pred_node.next  = node_index;
+        new_pred_node.count = pred.node().count;
+      }
+      
+      if(pred.compare_and_swap(new_pred_node) == false) {
+        return release(ptr);
+      }
+      
+      return true;
+    }
+
   private:
     class IsEnoughChunk {
     public:
-      IsEnoughChunk(uint32_t required_chunk_count) : count(required_chunk_count) {}
+      IsEnoughChunk(uint32_t required_chunk_count) : count_(required_chunk_count) {}
       
       bool operator()(const Snapshot& pred, const Snapshot& curr) const {
-        return curr.node().count >= count;
+        return curr.node().status == Node::FREE && curr.node().count >= count_;
       }
 
     private:
-      const uint32_t count;
+      const uint32_t count_;
+    };
+
+    class IsPredecessor {
+    public:
+      IsPredecessor(uint32_t node_index) : node_index_(node_index) {}
+
+      bool operator()(const Snapshot& pred, const Snapshot& curr) const {
+        return node_index_ < curr.node().next;
+      }
+
+    private:
+      uint32_t node_index_;
     };
 
     template<class Callback>
@@ -165,7 +210,7 @@ namespace imque {
       Node new_curr_node = {curr.node().next,
                             curr.node().count,
                             curr.node().status | Node::JOIN_TAIL};
-      if(pred.compare_and_swap(new_curr_node) == false) {
+      if(curr.compare_and_swap(new_curr_node) == false) {
         return false;
       }
       
