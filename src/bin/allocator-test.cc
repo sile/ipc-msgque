@@ -11,8 +11,8 @@
 
 typedef imque::Allocator allocator;
 
-const int CHILD_NUM = 500;//0;
-const int LOOP_COUNT = 1000;//0;
+const int CHILD_NUM = 500;
+const int LOOP_COUNT = 1000;
 
 void sigsegv_handler(int sig) {
   std::cerr << "#" << getpid() << ":" << sig << std::endl;
