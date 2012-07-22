@@ -228,7 +228,7 @@ namespace imque {
       // 何故か 32bit環境の'gcc version 4.4.6 20110731 (Red Hat 4.4.6-3) (GCC)'の場合に、
       // 以下のケースに該当する場合があるので、その対処を入れておく (コンパイラのバグ？)
       if(curr.node().status & Node::JOIN_HEAD && curr.isJoinable(nodes_) == false) {
-        //return false;
+        return false;
       }
       
       if(! (pred.node().status & Node::JOIN_HEAD &&
