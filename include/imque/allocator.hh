@@ -4,6 +4,8 @@
 #include <inttypes.h>
 #include <cassert>
 
+#include <iostream> // XXX:
+
 namespace imque {
   class Allocator {
     struct Node {  // node of free-list
@@ -54,7 +56,7 @@ namespace imque {
       Node  val_;
     };
 
-    static const uint32_t MAX_RETRY_COUNT = 512;//128;
+    static const uint32_t MAX_RETRY_COUNT = 10; // XXX: for test
 
   public:
     Allocator(void* region, uint32_t size) 
@@ -112,10 +114,10 @@ namespace imque {
       if(find_candidate(IsPredecessor(node_index), pred) == false) {
         return false;
       }
-      /*
       if(pred.node().status != Node::FREE) {
         std::cerr << "!! " << pred.node().status << std::endl;
       }
+      /*
       if(! (node_index >= pred.index(nodes_)+pred.node().count)) {
         std::cout << "!! " << node_index << ", " << pred.index(nodes_)+pred.node().count << std::endl;
       }
@@ -190,9 +192,11 @@ namespace imque {
       }
       
       if(go_next_node(pred, curr) == false) {
+        usleep(10);
         return find_candidate(fn, curr, retry+1);
       }
 
+      // assert(curr.node().status != Node::JOIN_TAIL);
       if(fn(curr)) {
         return true;
       }
@@ -201,18 +205,33 @@ namespace imque {
       return find_candidate(fn, pred, curr, retry);
     }
    
+    // TODO: delete
     bool go_next_node(Snapshot& pred, Snapshot& curr) {
       return get_next_snapshot(pred, curr) &&
         update_node_status(pred, curr) &&
         join_nodes_if_need(pred, curr);
     }
 
+    // TODO: 不変項を明記しておく
     bool get_next_snapshot(Snapshot& pred, Snapshot& curr) const {
       if(pred.node().next == node_count_) {
         return false;
       }
 
       curr.update(&nodes_[pred.node().next]);
+
+      if(pred.isModified() == false) {
+        if(! (pred.node().status & Node::JOIN_HEAD &&
+              curr.node().status & Node::JOIN_TAIL)) {
+          // NOTE: predがjoin(JOIN_TAIL)されてしまった場合はここに来るかも
+          // (JOIN_TAIL側はJOIN時にアトミックに内容が更新されないので)
+          //assert(!(curr.node().status & Node::JOIN_TAIL));
+          if(curr.node().status & Node::JOIN_TAIL) {
+            return false;
+          }
+        }
+      }
+
       return pred.isModified() == false;
     }
 
@@ -241,8 +260,10 @@ namespace imque {
     bool join_nodes_if_need(Snapshot& pred, Snapshot& curr) {
       if(! (pred.node().status & Node::JOIN_HEAD &&
             curr.node().status & Node::JOIN_TAIL)) {
+        assert(!(curr.node().status & Node::JOIN_TAIL));
         return true;
       }
+      assert(pred.node().next == curr.index(nodes_));
       assert(pred.node().next == pred.index(nodes_) + pred.node().count);
 
       Node new_pred_node = {curr.node().next,
@@ -252,6 +273,7 @@ namespace imque {
       if(pred.compare_and_swap(new_pred_node) == false) {
         return false;
       }
+
       curr = pred;
       return true;
     }
