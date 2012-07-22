@@ -75,16 +75,16 @@ namespace imque {
       nodes_[1].status = Node::FREE;
     }
 
-    void* allocate(uint32_t size) {
+    uint32_t allocate(uint32_t size) {
       if(size == 0) {
-        return NULL; // invalid argument
+        return 0; // invalid argument
       }
 
       uint32_t required_chunk_count = (size+sizeof(Chunk)-1) / sizeof(Chunk);
       
       Snapshot cand;
       if(find_candidate(IsEnoughChunk(required_chunk_count), cand) == false) {
-        return NULL; // out of memory
+        return 0; // out of memory
       }
 
       Node new_node = {cand.node().next,
@@ -98,16 +98,16 @@ namespace imque {
       uint32_t alloced_node_index = cand.index(nodes_) + new_node.count;
       nodes_[alloced_node_index].count = required_chunk_count;
 
-      return reinterpret_cast<void*>(&chunks_[alloced_node_index]);
+      return alloced_node_index;
     }
 
-    bool release(void* ptr) {
-      if(ptr < chunks_ || ptr >= chunks_ + node_count_) {
-        assert(ptr >= chunks_ && ptr < chunks_ + node_count_);
+    bool release(uint32_t index) {
+      if(index == 0 || index >= node_count_) {
+        assert(index < node_count_);
         return true;
       }
 
-      uint32_t node_index = reinterpret_cast<Chunk*>(ptr) - chunks_;
+      uint32_t node_index = index;
       Snapshot pred;
       if(find_candidate(IsPredecessor(node_index), pred) == false) {
         return false;
@@ -125,7 +125,7 @@ namespace imque {
 
       Node* node = &nodes_[node_index];
       Node new_pred_node = {0, 0, Node::FREE};
-      if(node_index == pred.index(nodes_) + pred.node().count) {
+      if(node_index == pred.index(nodes_) + pred.node().count) { 
         new_pred_node.next  = pred.node().next;
         new_pred_node.count = pred.node().count + node->count;
       } else {
@@ -137,11 +137,14 @@ namespace imque {
       }
       
       if(pred.compare_and_swap(new_pred_node) == false) {
-        return release(ptr);
+        return release(index);
       }
       
       return true;
     }
+
+    template<typename T>
+    T* ptr(uint32_t index) const { return reinterpret_cast<T*>(chunks_ + index); }
 
   private:
     class IsEnoughChunk {

@@ -26,25 +26,23 @@ void child_start(allocator& alc) {
   for(int i=0; i < LOOP_COUNT; i++) {
     unsigned size = (rand() % 1024) + 1;
 
-    void* mem = alc.allocate(size);
-    //std::cout << "[" << getpid() << "] " << size << " => " << (long long)mem << std::endl;
-    if(mem != NULL) {
-      usleep(rand() % 300);
-      alc.release(mem);
-    }
+    uint32_t idx = alc.allocate(size);
+    //std::cout << "[" << getpid() << "] " << size << " => " << idx << std::endl;
+    usleep(rand() % 200); 
+    assert(alc.release(idx));
 
     /*
     char *buf = new char[size];
-    usleep(rand() % 300);
+    usleep(rand() % 200);
     delete [] buf;
-    */
+    */  
   }
   std::cout << "# exit: " << getpid() << std::endl;
 }
 
 
 int main() {
-  mmap_t mm(800*CHILD_NUM);
+  mmap_t mm(1024*CHILD_NUM);
   if(! mm) {
     std::cerr << "mmap() failed" << std::endl;
     return 1;
