@@ -2,9 +2,13 @@
 #define IPC_MSGQUE_HH
 
 #include "ipc_mmap.hh"
-#include "ipc_allocator.hh"
+//#include "ipc_allocator.hh"
+#include "imque/allocator.hh"
 #include <inttypes.h>
 #include <string>
+#include <string.h>
+
+typedef imque::Allocator allocator;
 
 struct msgque_data_t {
   msgque_data_t(allocator& alc, uint32_t index) 

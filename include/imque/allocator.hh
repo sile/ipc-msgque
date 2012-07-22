@@ -54,7 +54,7 @@ namespace imque {
       Node  val_;
     };
 
-    static const uint32_t MAX_RETRY_COUNT = 128;
+    static const uint32_t MAX_RETRY_COUNT = 512;//128;
 
   public:
     Allocator(void* region, uint32_t size) 
