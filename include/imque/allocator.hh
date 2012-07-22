@@ -7,8 +7,8 @@
 namespace imque {
   class Allocator {
     struct Node {  // node of free-list
-      uint32_t next;     // next free block index
-      uint32_t count:30; // available block count
+      uint32_t next;  // next free block index
+      uint32_t count:30;     // available block count
       uint32_t status:2;
 
       enum STATUS {
@@ -112,6 +112,15 @@ namespace imque {
       if(find_candidate(IsPredecessor(node_index), pred) == false) {
         return false;
       }
+      /*
+      if(pred.node().status != Node::FREE) {
+        std::cerr << "!! " << pred.node().status << std::endl;
+      }
+      if(! (node_index >= pred.index(nodes_)+pred.node().count)) {
+        std::cout << "!! " << node_index << ", " << pred.index(nodes_)+pred.node().count << std::endl;
+      }
+      */
+      assert(node_index >= pred.index(nodes_)+pred.node().count);
       assert(pred.node().status == Node::FREE);
 
       Node* node = &nodes_[node_index];
@@ -139,8 +148,9 @@ namespace imque {
     public:
       IsEnoughChunk(uint32_t required_chunk_count) : count_(required_chunk_count) {}
       
-      bool operator()(const Snapshot& pred, const Snapshot& curr) const {
-        return curr.node().status == Node::FREE && curr.node().count >= count_;
+      bool operator()(const Snapshot& curr) const {
+        //return curr.node().status == Node::FREE && curr.node().count >= count_;
+        return curr.node().status == Node::FREE && curr.node().count > count_;
       }
 
     private:
@@ -151,7 +161,7 @@ namespace imque {
     public:
       IsPredecessor(uint32_t node_index) : node_index_(node_index) {}
 
-      bool operator()(const Snapshot& pred, const Snapshot& curr) const {
+      bool operator()(const Snapshot& curr) const {
         return node_index_ < curr.node().next;
       }
 
@@ -172,18 +182,26 @@ namespace imque {
         return false;
       }
       
-      if(get_next_snapshot(pred, curr) == false ||
-         update_node_status(pred, curr) == false ||
-         join_nodes_if_need(pred, curr) == false) {
+      if(pred.node().next == node_count_) {
+        return false;
+      }
+      
+      if(go_next_node(pred, curr) == false) {
         return find_candidate(fn, curr, retry+1);
       }
 
-      if(fn(pred, curr)) {
+      if(fn(curr)) {
         return true;
       }
       
       pred = curr;
       return find_candidate(fn, pred, curr, retry);
+    }
+   
+    bool go_next_node(Snapshot& pred, Snapshot& curr) {
+      return get_next_snapshot(pred, curr) &&
+        update_node_status(pred, curr) &&
+        join_nodes_if_need(pred, curr);
     }
 
     bool get_next_snapshot(Snapshot& pred, Snapshot& curr) const {
@@ -231,8 +249,8 @@ namespace imque {
       if(pred.compare_and_swap(new_pred_node) == false) {
         return false;
       }
-      
-      return get_next_snapshot(pred, curr);
+      curr = pred;
+      return true;
     }
 
   private:
