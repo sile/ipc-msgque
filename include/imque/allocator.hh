@@ -39,7 +39,8 @@ namespace imque {
 
       const Node& node() const { return val_; }
       bool isModified() const { return ptr_->as_uint64() != val_.as_uint64(); }
-
+      bool isJoinable(Node* head) const { return val_.next == index(head) + val_.count; }
+      
       bool compare_and_swap(const Node& new_val) {
         if(isModified() == false &&
            __sync_bool_compare_and_swap(ptr_->as_uint64_ptr(), val_.as_uint64(), new_val.as_uint64())) {
@@ -192,7 +193,7 @@ namespace imque {
       }
       
       if(go_next_node(pred, curr) == false) {
-        usleep(10);
+        usleep(1);
         return find_candidate(fn, curr, retry+1);
       }
 
@@ -220,23 +221,30 @@ namespace imque {
 
       curr.update(&nodes_[pred.node().next]);
 
-      if(pred.isModified() == false) {
-        if(! (pred.node().status & Node::JOIN_HEAD &&
-              curr.node().status & Node::JOIN_TAIL)) {
-          // NOTE: predがjoin(JOIN_TAIL)されてしまった場合はここに来るかも
-          // (JOIN_TAIL側はJOIN時にアトミックに内容が更新されないので)
-          //assert(!(curr.node().status & Node::JOIN_TAIL));
-          if(curr.node().status & Node::JOIN_TAIL) {
-            return false;
-          }
+      if(pred.isModified()) {
+        return false;
+      }
+      
+      // 何故か 32bit環境の'gcc version 4.4.6 20110731 (Red Hat 4.4.6-3) (GCC)'の場合に、
+      // 以下のケースに該当する場合があるので、その対処を入れておく (コンパイラのバグ？)
+      if(curr.node().status & Node::JOIN_HEAD && curr.isJoinable(nodes_) == false) {
+        //return false;
+      }
+      
+      if(! (pred.node().status & Node::JOIN_HEAD &&
+            curr.node().status & Node::JOIN_TAIL)) {
+        // NOTE: predがjoin(JOIN_TAIL)されてしまった場合はここに来るかも
+        // (JOIN_TAIL側はJOIN時にアトミックに内容が更新されないので)
+        //assert(!(curr.node().status & Node::JOIN_TAIL));
+        if(curr.node().status & Node::JOIN_TAIL) {
+          return false;
         }
       }
-
-      return pred.isModified() == false;
+      return true;
     }
 
     bool update_node_status(Snapshot& pred, Snapshot& curr) {
-      if(pred.node().next != pred.index(nodes_) + pred.node().count) {
+      if(pred.isJoinable(nodes_) == false) {
         return true;
       }
 
@@ -264,8 +272,8 @@ namespace imque {
         return true;
       }
       assert(pred.node().next == curr.index(nodes_));
-      assert(pred.node().next == pred.index(nodes_) + pred.node().count);
-
+      assert(pred.isJoinable(nodes_));
+     uint32_t curr_status = curr.node().status;
       Node new_pred_node = {curr.node().next,
                             pred.node().count + curr.node().count,
                             (pred.node().status & ~Node::JOIN_HEAD) |
@@ -273,7 +281,9 @@ namespace imque {
       if(pred.compare_and_swap(new_pred_node) == false) {
         return false;
       }
-
+      if(! (curr_status & Node::JOIN_HEAD)) {
+        assert(! (pred.node().status & Node::JOIN_HEAD));
+      }
       curr = pred;
       return true;
     }
