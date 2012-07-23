@@ -161,6 +161,19 @@ namespace imque {
 
     template<typename T>
     T* ptr(uint32_t index) const { return reinterpret_cast<T*>(chunks_ + index); }
+
+    // テスト用メソッド: 他と競合が発生するような状況で実行したら、結果が不正になることがあるので注意
+    uint32_t allocatedNodeCount() const {
+      uint32_t allocated_count = 0;
+      
+      Snapshot pred(&nodes_[0]);
+      Snapshot curr;
+      while(get_next_snapshot(pred, curr)) {
+        allocated_count += (curr.node().next - curr.index(nodes_)) - curr.node().count;
+        pred = curr;
+      }
+      return allocated_count;
+    }
     
   private:
     // 現在のノードが、十分な(要求以上の)空き領域を管理しているかどうかを判定するためのコールバック

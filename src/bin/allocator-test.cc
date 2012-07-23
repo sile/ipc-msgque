@@ -28,20 +28,24 @@ void child_start(allocator& alc) {
 
     uint32_t idx = alc.allocate(size);
     //std::cout << "[" << getpid() << "] " << size << " => " << idx << std::endl;
+    memset(alc.ptr<char>(idx), rand()%0x100, size);
     usleep(rand() % 400); 
     assert(alc.release(idx));
 
     /*
     char *buf = new char[size];
-    usleep(rand() % 200);
+    memset(buf, rand()%0x100, size);
+    usleep(rand() % 400);
     delete [] buf;
-    */  
+    */
   }
   std::cout << "# exit: " << getpid() << std::endl;
 }
 
 
 int main() {
+  pid_t children[CHILD_NUM];
+
   mmap_t mm(1024*CHILD_NUM);
   if(! mm) {
     std::cerr << "mmap() failed" << std::endl;
@@ -52,15 +56,21 @@ int main() {
   signal(SIGSEGV, sigsegv_handler);
 
   for(int i=0; i < CHILD_NUM; i++) {
-    if(fork() == 0) {
+    pid_t child = fork();
+    if(child == 0) {
       child_start(alc);
       return 0;
     }
+    children[i] = child;
   }
 
   //child_start(alc);
 
-  waitid(P_ALL, 0, NULL, WEXITED);
-  // alc.allocate(10);
+  for(int i=0; i < CHILD_NUM; i++) {
+    waitpid(children[i], NULL, 0);
+  }
+
+  std::cout << "leaked node count: " << alc.allocatedNodeCount() << std::endl;
+
   return 0;
 }
