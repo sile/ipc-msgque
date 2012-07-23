@@ -14,9 +14,14 @@ namespace imque {
       uint32_t value:31;
     };
 
+    struct Stat {
+      uint32_t overflowed_count;
+    };
+
     struct Header {
       volatile uint32_t read_pos;
       volatile uint32_t write_pos;
+      Stat stat;
       uint32_t entry_count;
       Entry entries[0];
       
@@ -40,6 +45,7 @@ namespace imque {
       
       que_->read_pos  = 0;
       que_->write_pos = 0;
+      que_->stat.overflowed_count = 0;
       memset(que_->entries, 0, sizeof(Entry)*que_->entry_count);
     }
 
