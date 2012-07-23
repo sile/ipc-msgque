@@ -7,6 +7,8 @@
 #include <sys/wait.h>
 #include <unistd.h>
 
+#include <imque/queue.hh>
+
 const int CHILD_NUM = 200;
 const int LOOP_COUNT = 400;
 
