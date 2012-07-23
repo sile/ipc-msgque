@@ -22,7 +22,7 @@ namespace imque {
     }
 
     // 複数プロセス間で共有可能な名前つきメモリ領域を作成する
-    SharedMemory(const std::string& filepath, size_t size, mode_t mode=0666) 
+    SharedMemory(const std::string& filepath, size_t size, mode_t mode=0660) 
       : ptr_(MAP_FAILED), size_(size) {
       int fd = open(filepath.c_str(), O_CREAT|O_RDWR, mode);
       if(fd == -1) {
@@ -45,6 +45,9 @@ namespace imque {
 
     template <class T>
     T* ptr() const { return reinterpret_cast<T*>(ptr_); }
+
+    template <class T>
+    T* ptr(size_t offset) const { return reinterpret_cast<T*>(ptr<char>()+offset); }
   
     size_t size() const { return size_; }
     

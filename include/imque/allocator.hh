@@ -167,6 +167,12 @@ namespace imque {
     template<typename T>
     T* ptr(uint32_t index) const { return reinterpret_cast<T*>(chunks_ + index); }
 
+    // sizeバイトを利用(割当)可能にするためには、何バイト分の領域をコンストラクタに渡せば良いかを返す
+    // ※ あくまでも目安である程度の誤差はある
+    static size_t calc_need_byte_size(size_t size) {
+      return (sizeof(Node)+sizeof(Chunk))*size / sizeof(Chunk);
+    }
+
     // テスト用メソッド: 他と競合が発生するような状況で実行したら、結果が不正になることがあるので注意
     uint32_t allocatedNodeCount() const {
       uint32_t allocated_count = 0;
