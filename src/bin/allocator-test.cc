@@ -1,7 +1,7 @@
 #include <iostream>
 //#include <ipc_allocator.hh>
 #include <ipc_mmap.hh>
-
+#include <string.h>
 #include <imque/allocator.hh>
 
 #include <sys/types.h>

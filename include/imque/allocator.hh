@@ -42,7 +42,12 @@ namespace imque {
       
       void update(Node* ptr) {
         ptr_ = ptr;
+#ifdef __x86_64__
         val_ = *ptr;
+#else
+        uint64_t val = __sync_val_compare_and_swap(ptr->uint64_ptr(), 0, 0);
+        val_ = *reinterpret_cast<Node*>(&val);
+#endif
       }
 
       const Node& node() const { return val_; }
@@ -172,6 +177,8 @@ namespace imque {
         allocated_count += (curr.node().next - curr.index(nodes_)) - curr.node().count;
         pred = curr;
       }
+      allocated_count += (node_count_ - curr.node().next);
+
       return allocated_count;
     }
     
@@ -248,15 +255,7 @@ namespace imque {
         return false;
       }
 
-      // 以下、不変項目のチェック:
-      
-      // 何故か 32bit環境の'gcc version 4.4.6 20110731 (Red Hat 4.4.6-3) (GCC)'の場合に、
-      // 以下のケースに該当する場合があるので、その対処を入れておく (コンパイラのバグ？)
-      if(curr.node().status & Node::JOIN_HEAD && curr.isJoinable(nodes_) == false) {
-        // 後続のノードと結合できないのに、結合可能状態に設定されている 
-        // => 本来ありえないはずのケース
-        return false;
-      }
+      assert(! (curr.node().status & Node::JOIN_HEAD && curr.isJoinable(nodes_)==false));
       
       if((! pred.node().status & Node::JOIN_HEAD) && curr.node().status & Node::JOIN_TAIL) {
         // 前半のノードが結合可能状態になっていないのに、後半のノードだけ結合可能にマークされている
