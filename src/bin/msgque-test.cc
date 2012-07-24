@@ -1,5 +1,6 @@
 #include <iostream>
 #include <ipc_msgque.hh>
+#include <imque/queue.hh>
 #include <string.h>
 #include <stdlib.h>
 #include <string>
@@ -64,6 +65,21 @@ void reader_start(msgque_t& que) {
 }
 
 int main(int argc, char** argv) {
+  imque::Queue que2(1024, 1024*1024);
+  assert(que2);
+  que2.init();
+  
+  int val = 111;
+  que2.enq(&val, sizeof(int));
+  std::cout << "# enq" << std::endl;
+
+  size_t size;
+  int* pval = (int*)que2.deq(size);
+  std::cout << "# deq" << std::endl;
+  std::cout << "# " << *pval << ", " << size << std::endl;
+  
+  return 0;
+
   msgque_t que(1024*32, 1024*1024*4);
   que.init();
   signal(SIGSEGV, sigsegv_handler);
