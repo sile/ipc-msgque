@@ -42,12 +42,9 @@ namespace imque {
       
       void update(Node* ptr) {
         ptr_ = ptr;
-#ifdef __x86_64__
-        val_ = *ptr;
-#else
-        uint64_t val = __sync_val_compare_and_swap(ptr->uint64_ptr(), 0, 0);
+
+        uint64_t val = __sync_add_and_fetch(ptr->uint64_ptr(), 0); // atomicなロード関数がないので、その代替
         val_ = *reinterpret_cast<Node*>(&val);
-#endif
       }
 
       const Node& node() const { return val_; }
