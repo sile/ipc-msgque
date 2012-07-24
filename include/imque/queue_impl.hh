@@ -12,6 +12,14 @@ namespace imque {
     struct Entry {
       uint32_t state:1;
       uint32_t value:31;
+
+      enum STATE {
+        FREE = 0,
+        USED = 1
+      };
+
+      uint32_t* uint32_ptr() { return reinterpret_cast<uint32_t*>(this); }
+      uint32_t  uint32() const { return *reinterpret_cast<const uint32_t*>(this); }
     };
 
     struct Stat {
@@ -51,6 +59,22 @@ namespace imque {
 
     bool enq(const void* data, size_t size) {
       if(isFull()) {
+        __sync_add_and_fetch(&que_->stat.overflowed_count, 1);
+        return false;
+      }
+      
+      uint32_t alloc_id = alc_.allocate(sizeof(size_t) + size);
+      if(alloc_id == 0) {
+        __sync_add_and_fetch(&que_->stat.overflowed_count, 1);
+        return false;
+      }
+
+      alc_.ptr<size_t>(alloc_id)[0] = size;
+      memcpy(alc_.ptr<void>(alloc_id, sizeof(size_t)), data, size);
+
+      if(enq_impl(alloc_id) == false) {
+        __sync_add_and_fetch(&que_->stat.overflowed_count, 1);
+        alc_.release(alloc_id);
         return false;
       }
       
@@ -62,6 +86,17 @@ namespace imque {
         return false;
       }
 
+      uint32_t alloc_id = deq_impl();
+      if(alloc_id == 0) {
+        return false;
+      }
+
+      size_t size = alc_.ptr<size_t>(alloc_id)[0];
+      char*  data = alc_.ptr<char>(alloc_id, sizeof(size_t));
+      buf.assign(data, size);
+      
+      assert(alc_.release(alloc_id));
+      
       return true;
     }
 
@@ -73,6 +108,57 @@ namespace imque {
     }
 
   private:
+    bool enq_impl(uint32_t value) {
+      uint32_t curr_read  = que_->read_pos;
+      uint32_t curr_write = que_->write_pos;
+      uint32_t next_write = (curr_write+1) % que_->entry_count;
+      
+      if(curr_read == next_write) {
+        __sync_add_and_fetch(&que_->stat.overflowed_count, 1);
+        return false;
+      }
+      
+      Entry* pe = &que_->entries[curr_write];
+      Entry  e = *pe;
+      if(e.state != Entry::FREE) {
+        __sync_bool_compare_and_swap(&que_->write_pos, curr_write, next_write);
+        return enq_impl(value);
+      }
+
+      Entry new_e = {Entry::USED, value};
+      if(__sync_bool_compare_and_swap(pe->uint32_ptr(), e.uint32(), new_e.uint32()) == false) {
+        return enq_impl(value);
+      }
+      
+      __sync_bool_compare_and_swap(&que_->write_pos, curr_write, next_write);      
+      return true;
+    }
+
+    uint32_t deq_impl() {
+      uint32_t curr_read  = que_->read_pos;
+      uint32_t curr_write = que_->write_pos;
+      uint32_t next_read = (curr_read+1) % que_->entry_count;
+      
+      if(curr_read == curr_write) {
+        return 0;
+      }
+
+      Entry* pe = &que_->entries[curr_read];
+      Entry   e = *pe;
+      if(e.state == Entry::FREE) {
+        __sync_bool_compare_and_swap(&que_->read_pos, curr_read, next_read);
+        return deq_impl();
+      }
+
+      Entry new_e = {Entry::FREE, 0};
+      if(__sync_bool_compare_and_swap(pe->uint32_ptr(), e.uint32(), new_e.uint32()) == false) {
+        return deq_impl();
+      }
+      
+      __sync_bool_compare_and_swap(&que_->read_pos, curr_read, next_read);
+      return e.value;
+    }
+
     static size_t que_size(size_t entry_count) {
       return sizeof(Header) + sizeof(Entry)*entry_count;
     }
