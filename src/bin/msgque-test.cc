@@ -1,5 +1,4 @@
 #include <iostream>
-#include <ipc_msgque.hh>
 #include <imque/queue.hh>
 #include <string.h>
 #include <stdlib.h>
@@ -26,7 +25,7 @@ void gen_random_string(std::string& s, std::size_t size) {
   }
 }
 
-void writer_start(msgque_t& que) {
+void writer_start(imque::Queue& que) {
   std::cout << "# child(writer): " << getpid() << std::endl;
   srand(time(NULL)+getpid());
   
@@ -35,7 +34,7 @@ void writer_start(msgque_t& que) {
     std::string s;
     gen_random_string(s, size);
     
-    if(que.push(s.c_str(), s.size()) == false) {
+    if(que.enq(s.c_str(), s.size()) == false) {
       std::cout << "@ [" << getpid() << "] queue is full" << std::endl;
       usleep(rand() % 300);
     } else {
@@ -46,18 +45,19 @@ void writer_start(msgque_t& que) {
   std::cout << "# exit: " << getpid() << std::endl;
 }
 
-void reader_start(msgque_t& que) {
+void reader_start(imque::Queue& que) {
   std::cout << "# child(reader): " << getpid() << std::endl;
   srand(time(NULL));
   usleep(10);
   
   for(int i=0; i < LOOP_COUNT*3.5; i++) {
-    std::string s;
-    
-    if(que.pop(s) == false) {
+    size_t size;
+    const void* data = que.deq(size);
+    if(data == NULL) {
       std::cout << "@ [" << getpid() << "] queue is empty" << std::endl;
       usleep(rand() % 200);
     } else {
+      std::string s((const char*)data, size);
       std::cout << "@ [" << getpid() << "] read: " << s << std::endl;
     }
   }
@@ -65,22 +65,7 @@ void reader_start(msgque_t& que) {
 }
 
 int main(int argc, char** argv) {
-  imque::Queue que2(1024, 1024*1024);
-  assert(que2);
-  que2.init();
-  
-  int val = 111;
-  que2.enq(&val, sizeof(int));
-  std::cout << "# enq" << std::endl;
-
-  size_t size;
-  int* pval = (int*)que2.deq(size);
-  std::cout << "# deq" << std::endl;
-  std::cout << "# " << *pval << ", " << size << std::endl;
-  
-  return 0;
-
-  msgque_t que(1024*32, 1024*1024*4);
+  imque::Queue que(1024*32, 1024*1024*4);
   que.init();
   signal(SIGSEGV, sigsegv_handler);
 
