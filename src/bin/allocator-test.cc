@@ -1,8 +1,7 @@
 #include <iostream>
-//#include <ipc_allocator.hh>
-#include <ipc_mmap.hh>
 #include <string.h>
 #include <imque/allocator.hh>
+#include <imque/shared_memory.hh>
 
 #include <sys/types.h>
 #include <sys/wait.h>
@@ -46,7 +45,7 @@ void child_start(allocator& alc) {
 int main() {
   pid_t children[CHILD_NUM];
 
-  mmap_t mm(1024*CHILD_NUM);
+  imque::SharedMemory mm(1024*CHILD_NUM);
   if(! mm) {
     std::cerr << "mmap() failed" << std::endl;
     return 1;

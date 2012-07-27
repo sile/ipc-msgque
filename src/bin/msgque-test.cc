@@ -65,7 +65,7 @@ void reader_start(imque::Queue& que) {
 }
 
 int main(int argc, char** argv) {
-  imque::Queue que(1024*32, 1024*1024*4);
+  imque::Queue que(256, 1024*1024);
   que.init();
   signal(SIGSEGV, sigsegv_handler);
 
@@ -84,8 +84,10 @@ int main(int argc, char** argv) {
       return 0;
     }
   }
-
-  waitid(P_ALL, 0, NULL, WEXITED);
+  for(int i=0; i < CHILD_NUM; i++) {
+    waitid(P_ALL, 0, NULL, WEXITED);
+  }
+  std::cerr << "overflow: " << que.overflowedCount() << std::endl;
 
   return 0;
 }

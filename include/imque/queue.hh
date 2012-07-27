@@ -43,12 +43,8 @@ namespace imque {
     bool isEmpty() const { return impl_.isEmpty(); }
     bool isFull()  const { return impl_.isFull(); }
 
-    // TODO:
-    size_t overflowedCount() {
-      return 0;
-    }
-    void resetOverflowedCount() {
-    }
+    size_t overflowedCount() const { return impl_.overflowedCount(); }
+    void resetOverflowedCount() { impl_.resetOverflowedCount(); }
 
   private:
     SharedMemory shm_;

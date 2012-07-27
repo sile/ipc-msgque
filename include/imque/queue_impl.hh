@@ -107,6 +107,9 @@ namespace imque {
       return que_size(entry_count) + dat_size(data_size);
     }
 
+    size_t overflowedCount() const { return que_->stat.overflowed_count; }
+    void resetOverflowedCount() { que_->stat.overflowed_count = 0; }
+
   private:
     bool enq_impl(uint32_t value) {
       uint32_t curr_read  = que_->read_pos;
