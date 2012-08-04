@@ -8,6 +8,7 @@ namespace imque {
   /**
    * 複数プロセス・複数スレッドで共有されているメモリ領域の割り当てに使えるアロケータ
    */
+  // TODO: Chunkのサイズはtemplateで指定可能にしても良いかもしれない
   class Allocator {
     /** 
      * 補助構造体・クラス群
@@ -307,7 +308,8 @@ namespace imque {
       }
       assert(pred.node().next == curr.index(nodes_));
       assert(pred.isJoinable(nodes_));
-     uint32_t curr_status = curr.node().status;
+      
+      uint32_t curr_status = curr.node().status;
       Node new_pred_node = {curr.node().next,
                             pred.node().count + curr.node().count,
                             (pred.node().status & ~Node::JOIN_HEAD) |
