@@ -9,7 +9,7 @@
 
 #include <imque/queue.hh>
 
-const int CHILD_NUM = 200;
+const int CHILD_NUM = 2000;
 const int LOOP_COUNT = 400;
 
 void sigsegv_handler(int sig) {
@@ -51,13 +51,11 @@ void reader_start(imque::Queue& que) {
   usleep(10);
   
   for(int i=0; i < LOOP_COUNT*3.5; i++) {
-    size_t size;
-    const void* data = que.deq(size);
-    if(data == NULL) {
+    std::string s;
+    if(que.deq(s) == false) {
       std::cout << "@ [" << getpid() << "] queue is empty" << std::endl;
       usleep(rand() % 200);
     } else {
-      std::string s((const char*)data, size);
       std::cout << "@ [" << getpid() << "] read: " << s << std::endl;
     }
   }

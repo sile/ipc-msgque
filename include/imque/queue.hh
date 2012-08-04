@@ -28,17 +28,9 @@ namespace imque {
       }
     }
 
-    bool enq(const void* data, size_t size) {
-      return impl_.enq(data, size);
-    }
+    bool enq(const void* data, size_t size) { return impl_.enq(data, size); }
 
-    const void* deq(size_t& size) {
-      if(impl_.deq(buf_) == false) {
-        return NULL;
-      }
-      size = buf_.size();
-      return buf_.data();
-    }
+    bool deq(std::string& data) { return impl_.deq(data); }
     
     bool isEmpty() const { return impl_.isEmpty(); }
     bool isFull()  const { return impl_.isFull(); }
@@ -49,7 +41,6 @@ namespace imque {
   private:
     SharedMemory shm_;
     QueueImpl    impl_;
-    std::string  buf_;
   };
 }
 

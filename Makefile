@@ -6,4 +6,4 @@ allocator-test:
 
 msgque-test:
 	mkdir -p bin
-	g++ -Iinclude -O2 -o bin/msgque-test src/ipc_msgque.o src/bin/msgque-test.cc
+	g++ -Iinclude -O2 -o bin/msgque-test src/bin/msgque-test.cc
