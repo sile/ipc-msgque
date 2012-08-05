@@ -38,7 +38,7 @@ void writer_start(imque::Queue& que) {
       std::cout << "@ [" << getpid() << "] queue is full" << std::endl;
       usleep(rand() % 300);
     } else {
-      std::cout << "@ [" << getpid() << "] write: " << s << std::endl;
+      // std::cout << "@ [" << getpid() << "] write: " << s << std::endl;
     }
     usleep(rand() % 400);
   }
@@ -47,16 +47,16 @@ void writer_start(imque::Queue& que) {
 
 void reader_start(imque::Queue& que) {
   std::cout << "# child(reader): " << getpid() << std::endl;
-  srand(time(NULL));
+  srand(time(NULL)+getpid());
   usleep(10);
   
-  for(int i=0; i < LOOP_COUNT*3.5; i++) {
+  for(int i=0; i < LOOP_COUNT*5; i++) {
     std::string s;
     if(que.deq(s) == false) {
-      std::cout << "@ [" << getpid() << "] queue is empty" << std::endl;
+      // std::cout << "@ [" << getpid() << "] queue is empty" << std::endl;
       usleep(rand() % 200);
     } else {
-      std::cout << "@ [" << getpid() << "] read: " << s << std::endl;
+      // std::cout << "@ [" << getpid() << "] read: " << s << std::endl;
     }
   }
   std::cout << "# exit: " << getpid() << std::endl;

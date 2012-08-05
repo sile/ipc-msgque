@@ -3,6 +3,7 @@
 
 #include "shared_memory.hh"
 #include "allocator.hh"
+#include "block_allocator.hh"
 
 #include <inttypes.h>
 #include <string.h>
@@ -172,7 +173,7 @@ namespace imque {
 
   private:
     Header*   que_;
-    Allocator alc_;
+    BlockAllocator alc_;
   };
 }
 

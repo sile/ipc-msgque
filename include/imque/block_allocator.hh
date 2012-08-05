@@ -110,6 +110,10 @@ namespace imque {
         assert(v.val_ != 0);
 
         Block blk = *alc_.ptr<Block>(v.val_);
+        if(v.ver_ != Ver::fromInt(__sync_add_and_fetch(&sb.head_, 0)).ver_) {
+          // NOTE: 下のassertをなくせば、この分岐は不要
+          continue;
+        }
         uint32_t next = blk.next;
         assert(next != v.val_);
         
