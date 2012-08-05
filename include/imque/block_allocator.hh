@@ -12,6 +12,20 @@ namespace imque {
     uint32_t next;
   };
 
+  struct Ver {
+    uint32_t ver_;
+    uint32_t val_;
+
+    static Ver fromInt(uint64_t v) {
+      return *reinterpret_cast<Ver*>(&v);
+    }
+
+    uint64_t toInt() {
+      return *reinterpret_cast<uint64_t*>(this);
+    }
+  };
+  
+
   struct SuperBlock {
     SuperBlock(uint32_t block_size) 
       : block_size_(block_size),
@@ -24,11 +38,8 @@ namespace imque {
     uint32_t free_count_;
     union {
       uint64_t head_;
-      struct {
-        uint32_t ver_;
-        uint32_t val_;
-      } u;
-    }
+      Ver u;
+    };
   };
 
   union Handle {
@@ -60,8 +71,9 @@ namespace imque {
         sb_[i].block_size_ = block_size;
         sb_[i].used_count_ = 0;
         sb_[i].free_count_ = 0;
-        sb_[i].head_ = 0xFFFFFFFF;
-        sb_[i].ver_ = 0;
+        //sb_[i].head_ = 0xFFFFFFFF;
+        sb_[i].u.ver_ = 0;
+        sb_[i].u.val_ = 0xFFFFFFFF;
         
         block_size *= 2;
       }
@@ -88,12 +100,22 @@ namespace imque {
       Handle h;
       h.u.sc = sc;
 
-      for(uint32_t head=sb.head_; head != 0xFFFFFFFF; head=sb.head_) {
-        Block blk = *alc_.ptr<Block>(head); // XXX: ABA problem
+      for(Ver v = Ver::fromInt(__sync_add_and_fetch(&sb.head_, 0));
+          v.val_ != 0xFFFFFFFF;
+          v = Ver::fromInt(__sync_add_and_fetch(&sb.head_, 0))) {
+        
+        assert(v.val_ != 0);
+
+        Block blk = *alc_.ptr<Block>(v.val_);
         uint32_t next = blk.next;
-        assert(next != head);
-        if(__sync_bool_compare_and_swap(&sb.head_, head, next)) {
-          h.u.idx = head;
+        assert(next != v.val_);
+        
+        Ver nv;
+        nv.ver_ = v.ver_+1;
+        nv.val_ = next;
+        
+        if(__sync_bool_compare_and_swap(&sb.head_, v.toInt(), nv.toInt())) {
+          h.u.idx = v.val_;
           __sync_add_and_fetch(&sb.used_count_, 1);
           __sync_sub_and_fetch(&sb.free_count_, 1);
           return h.intval;
@@ -139,10 +161,16 @@ namespace imque {
       assert(h.u.idx != 0);
       Block* block = alc_.ptr<Block>(h.u.idx);
       for(;;) {
-        uint32_t head = sb.head_;
-        block->next = head;
-        assert(head != h.u.idx);
-        if(__sync_bool_compare_and_swap(&sb.head_, head, h.u.idx)) {
+        //uint32_t head = sb.head_;
+        Ver v = Ver::fromInt(__sync_add_and_fetch(&sb.head_, 0));
+        
+        block->next = v.val_; //head;
+        assert(v.val_ != h.u.idx);
+        Ver nv;
+        nv.ver_ = v.ver_+1;
+        nv.val_ = h.u.idx;
+
+        if(__sync_bool_compare_and_swap(&sb.head_, v.toInt(), nv.toInt())) {
           break;
         }
       }
