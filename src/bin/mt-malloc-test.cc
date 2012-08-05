@@ -30,6 +30,7 @@ void* child_start(void* data) {
     delete [] buf;
   }
   std::cout << "# exit: " << id << std::endl;
+  return NULL;
 }
 
 int main() {

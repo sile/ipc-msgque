@@ -40,6 +40,7 @@ void* child_start(void* data) {
     assert(alc.release(idx));
   }
   std::cout << "# exit: " << id << std::endl;
+  return NULL;
 }
 
 int main() {

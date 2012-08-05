@@ -20,7 +20,7 @@ void sigsegv_handler(int sig) {
 void gen_random_string(std::string& s, std::size_t size) {
   const char cs[] = "0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ";
   s.resize(size);
-  for(int i=0; i < size; i++) {
+  for(std::size_t i=0; i < size; i++) {
     s[i] = cs[rand() % strlen(cs)];
   }
 }

@@ -27,6 +27,11 @@ namespace imque {
 
       uint64_t* uint64_ptr() { return reinterpret_cast<uint64_t*>(this); }
       uint64_t uint64() const { return *reinterpret_cast<const uint64_t*>(this); }
+      static Node fromUint64(uint64_t n) { 
+        uint64_t* tmp = &n;
+        return *reinterpret_cast<Node*>(tmp);
+      }
+
     } __attribute__((__packed__));
 
     // 実際に割り当てられるチャンク領域
@@ -45,7 +50,7 @@ namespace imque {
         ptr_ = ptr;
 
         uint64_t val = __sync_add_and_fetch(ptr->uint64_ptr(), 0); // atomicなロード関数がないので、その代替
-        val_ = *reinterpret_cast<Node*>(&val);
+        val_ = Node::fromUint64(val);
       }
 
       const Node& node() const { return val_; }
