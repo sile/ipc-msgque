@@ -89,6 +89,10 @@ namespace imque {
     operator bool() const { return node_count_ > 2; }
     
     void init() {
+      if(! *this) {
+        return;
+      }
+
       nodes_[0].next   = 1;
       nodes_[0].count  = 0;
       nodes_[0].status = Node::FREE;
