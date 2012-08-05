@@ -157,7 +157,7 @@ namespace imque {
 
       __sync_sub_and_fetch(&sb.used_count_, 1);
 
-      if(used_count*2 < free_count) {
+      if(used_count < free_count) {
         return alc_.release(h.u.idx);
       }
 

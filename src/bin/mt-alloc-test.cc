@@ -9,6 +9,7 @@
 #include <pthread.h>
 
 #include <imque/allocator.hh>
+#include <imque/block_allocator.hh>
 #include <imque/shared_memory.hh>
 
 typedef imque::Allocator allocator;
@@ -32,7 +33,9 @@ void* child_start(void* data) {
     unsigned size = (rand() % 1024) + 1;
 
     uint32_t idx = alc.allocate(size);
-    memset(alc.ptr<char>(idx), rand()%0x100, size);
+    if(idx != 0) {
+      memset(alc.ptr<char>(idx), rand()%0x100, size);
+    }
     usleep(rand() % 400); 
     assert(alc.release(idx));
   }
