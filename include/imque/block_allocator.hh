@@ -91,7 +91,10 @@ namespace imque {
 
     uint32_t allocate(uint32_t size) {
       if(size > 1024) {
-        return alc_.allocate(size);
+        Handle h;
+        h.u.sc = 0;
+        h.u.idx = alc_.allocate(size);
+        return h.intval;
       }
       
       uint32_t sc = calc_super_block(size);
