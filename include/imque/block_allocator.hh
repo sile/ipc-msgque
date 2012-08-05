@@ -22,7 +22,13 @@ namespace imque {
     uint32_t block_size_;
     uint32_t used_count_;
     uint32_t free_count_;
-    uint32_t head_;
+    union {
+      uint64_t head_;
+      struct {
+        uint32_t ver_;
+        uint32_t val_;
+      } u;
+    }
   };
 
   union Handle {
@@ -55,6 +61,7 @@ namespace imque {
         sb_[i].used_count_ = 0;
         sb_[i].free_count_ = 0;
         sb_[i].head_ = 0xFFFFFFFF;
+        sb_[i].ver_ = 0;
         
         block_size *= 2;
       }
@@ -62,15 +69,12 @@ namespace imque {
 
     uint32_t calc_super_block(uint32_t size) {
       uint32_t block_size = 32;
-      uint32_t sc = 1;
-      for(int i=0; i < 5; i++) {
-        if(block_size >= size) {
-          break;
-        }
+      uint32_t sc = 0;
+      for(; block_size < size; sc++) {
         block_size *= 2;
-        sc++;
       }
-      return sc;
+      assert(sc < 6);
+      return sc+1;
     }
 
     uint32_t allocate(uint32_t size) {
@@ -79,12 +83,15 @@ namespace imque {
       }
       
       uint32_t sc = calc_super_block(size);
+
       SuperBlock& sb = sb_[sc-1];
       Handle h;
       h.u.sc = sc;
 
       for(uint32_t head=sb.head_; head != 0xFFFFFFFF; head=sb.head_) {
-        uint32_t next = alc_.ptr<Block>(head)->next;
+        Block blk = *alc_.ptr<Block>(head); // XXX: ABA problem
+        uint32_t next = blk.next;
+        assert(next != head);
         if(__sync_bool_compare_and_swap(&sb.head_, head, next)) {
           h.u.idx = head;
           __sync_add_and_fetch(&sb.used_count_, 1);
@@ -97,6 +104,8 @@ namespace imque {
       for(int i=1; i < h.u.sc; i++) {
         alloc_size *= 2;
       }
+      assert(alloc_size >= size);
+
       h.u.idx = alc_.allocate(alloc_size);
       if(h.u.idx == 0) {
         return 0;
@@ -110,11 +119,10 @@ namespace imque {
         return true;
       }
 
-      Handle h;
-      h.intval = handle;
+      Handle h(handle);
 
       if(h.u.sc == 0) {
-        return alc_.release(handle);
+        return alc_.release(h.u.idx);
       }
 
       SuperBlock& sb = sb_[h.u.sc-1];
@@ -133,7 +141,7 @@ namespace imque {
       for(;;) {
         uint32_t head = sb.head_;
         block->next = head;
-        
+        assert(head != h.u.idx);
         if(__sync_bool_compare_and_swap(&sb.head_, head, h.u.idx)) {
           break;
         }

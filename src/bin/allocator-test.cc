@@ -27,7 +27,9 @@ void child_start(allocator& alc) {
 
     uint32_t idx = alc.allocate(size);
     //std::cout << "[" << getpid() << "] " << size << " => " << idx << std::endl;
-    memset(alc.ptr<char>(idx), rand()%0x100, size);
+    if(idx != 0) {
+      memset(alc.ptr<char>(idx), rand()%0x100, size);
+    }
     usleep(rand() % 400); 
     assert(alc.release(idx));
 

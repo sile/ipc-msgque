@@ -13,8 +13,22 @@ typedef imque::BlockAllocator allocator;
 const int CHILD_NUM = 500;
 const int LOOP_COUNT = 1000;
 
+uint32_t last_idx; // XXX:
+
+union Handle {
+    Handle() {}
+    Handle(uint32_t handle) : intval(handle) {}
+
+    struct {
+      uint32_t sc:4;
+      uint32_t idx:28;
+    } u;
+    uint32_t intval;
+  };
+
 void sigsegv_handler(int sig) {
-  std::cerr << "#" << getpid() << ":" << sig << std::endl;
+  Handle h(last_idx);
+  std::cerr << "#" << getpid() << ":" << sig << ":" << h.u.sc << "," << h.u.idx << std::endl;
   exit(1);
 }
 
@@ -25,7 +39,8 @@ void child_start(allocator& alc) {
   for(int i=0; i < LOOP_COUNT; i++) {
     unsigned size = (rand() % 1024) + 1;
 
-    uint32_t idx = alc.allocate(size);
+    last_idx = 0xFFFFFFFF;
+    uint32_t idx = last_idx = alc.allocate(size);
     //std::cout << "[" << getpid() << "] " << size << " => " << idx << std::endl;
     if(idx != 0) {
       memset(alc.ptr<char>(idx), rand()%0x100, size);
