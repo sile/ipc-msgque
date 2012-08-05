@@ -8,7 +8,7 @@
 #include <unistd.h>
 #include <stdlib.h>
 
-typedef imque::Allocator allocator;
+typedef imque::BlockAllocator allocator;
 
 const int CHILD_NUM = 500;
 const int LOOP_COUNT = 1000;
@@ -20,14 +20,16 @@ void sigsegv_handler(int sig) {
 
 void child_start(allocator& alc) {
   std::cout << "# child: " << getpid() << std::endl;
-  srand(time(NULL));
+  srand(time(NULL) + getpid());
 
   for(int i=0; i < LOOP_COUNT; i++) {
     unsigned size = (rand() % 1024) + 1;
 
     uint32_t idx = alc.allocate(size);
     //std::cout << "[" << getpid() << "] " << size << " => " << idx << std::endl;
-    memset(alc.ptr<char>(idx), rand()%0x100, size);
+    if(idx != 0) {
+      memset(alc.ptr<char>(idx), rand()%0x100, size);
+    }
     usleep(rand() % 400); 
     assert(alc.release(idx));
 
@@ -51,6 +53,11 @@ int main() {
     return 1;
   }
   allocator alc(mm.ptr<void>(), mm.size());
+  if(! alc) {
+    std::cerr << "alc() failed" << std::endl;
+    return 1;
+  }
+
   alc.init();
   signal(SIGSEGV, sigsegv_handler);
 
@@ -64,12 +71,11 @@ int main() {
   }
 
   //child_start(alc);
-
   for(int i=0; i < CHILD_NUM; i++) {
     waitpid(children[i], NULL, 0);
   }
 
-  std::cout << "leaked node count: " << alc.allocatedNodeCount() << std::endl;
+  //std::cout << "leaked node count: " << alc.allocatedNodeCount() << std::endl;
 
   return 0;
 }

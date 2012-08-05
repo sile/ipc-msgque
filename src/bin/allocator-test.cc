@@ -20,7 +20,7 @@ void sigsegv_handler(int sig) {
 
 void child_start(allocator& alc) {
   std::cout << "# child: " << getpid() << std::endl;
-  srand(time(NULL));
+  srand(time(NULL) + getpid());
 
   for(int i=0; i < LOOP_COUNT; i++) {
     unsigned size = (rand() % 1024) + 1;
