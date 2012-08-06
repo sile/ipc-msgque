@@ -10,14 +10,14 @@
 namespace imque {
   class Queue {
   public:
-    Queue(size_t entry_count, size_t data_size)
-      : shm_(QueueImpl::calc_need_byte_size(entry_count, data_size)),
-        impl_(entry_count, shm_) {
+    Queue(size_t data_size)
+      : shm_(QueueImpl::calc_need_byte_size(data_size)),
+        impl_(shm_) {
     }
       
-    Queue(size_t entry_count, size_t data_size, const std::string& filepath, mode_t mode=0660)
-      : shm_(filepath, QueueImpl::calc_need_byte_size(entry_count, data_size), mode),
-        impl_(entry_count, shm_) {
+    Queue(size_t data_size, const std::string& filepath, mode_t mode=0660)
+      : shm_(filepath, QueueImpl::calc_need_byte_size(data_size), mode),
+        impl_(shm_) {
     }
 
     operator bool() const { return shm_ && impl_; }
