@@ -10,7 +10,7 @@
 #include <imque/queue.hh>
 
 const int CHILD_NUM = 2000;
-const int LOOP_COUNT = 400;
+const int LOOP_COUNT = 10000;
 
 void sigsegv_handler(int sig) {
   std::cerr << "#" << getpid() << ":" << sig << std::endl;
@@ -40,7 +40,7 @@ void writer_start(imque::Queue& que) {
     } else {
       // std::cout << "@ [" << getpid() << "] write: " << s << std::endl;
     }
-    usleep(rand() % 400);
+    usleep(rand() % 200);
   }
   std::cout << "# exit: " << getpid() << std::endl;
 }

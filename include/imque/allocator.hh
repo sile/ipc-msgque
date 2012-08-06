@@ -183,21 +183,6 @@ namespace imque {
       return (sizeof(Node)+sizeof(Chunk))*size / sizeof(Chunk);
     }
 
-    // テスト用メソッド: 他と競合が発生するような状況で実行したら、結果が不正になることがあるので注意
-    uint32_t allocatedNodeCount() const {
-      uint32_t allocated_count = 0;
-      
-      Snapshot pred(&nodes_[0]);
-      Snapshot curr;
-      while(get_next_snapshot(pred, curr)) {
-        allocated_count += (curr.node().next - curr.index(nodes_)) - curr.node().count;
-        pred = curr;
-      }
-      allocated_count += (node_count_ - curr.node().next);
-
-      return allocated_count;
-    }
-    
   private:
     // 現在のノードが、十分な(要求以上の)空き領域を管理しているかどうかを判定するためのコールバック
     class IsEnoughChunk {

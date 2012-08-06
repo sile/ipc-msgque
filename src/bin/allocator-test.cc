@@ -71,7 +71,5 @@ int main() {
     waitpid(children[i], NULL, 0);
   }
 
-  std::cout << "leaked node count: " << alc.allocatedNodeCount() << std::endl;
-
   return 0;
 }
