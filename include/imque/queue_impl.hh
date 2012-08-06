@@ -73,17 +73,18 @@ namespace imque {
       
       que_->stat.overflowed_count = 0;
     }
-    
-    bool tail_go_ahead() {
+
+    Ver get_tail() {
       Ver tail = que_->tail.snapshot();
-      Entry* tail_f = alc_.ptr<Entry>(tail.val);
-      uint32_t tail_f_next = tail_f->next;
-      if(tail_f_next != Entry::END) {
-        Ver new_tail = {tail.ver+1, tail_f_next};
-        __sync_bool_compare_and_swap(que_->tail.toUint64Ptr(), tail.toUint64(), new_tail.toUint64());
-        return true;
+      Entry* e = alc_.ptr<Entry>(tail.val);
+      uint32_t e_next = e->next;
+      if(e_next == Entry::END) {
+        return tail;
       }
-      return false;
+      
+      Ver new_tail = {tail.ver+1, e_next};
+      __sync_bool_compare_and_swap(que_->tail.toUint64Ptr(), tail.toUint64(), new_tail.toUint64());
+      return get_tail();
     }
 
     bool enq(const void* data, size_t size) {
@@ -99,14 +100,10 @@ namespace imque {
       memcpy(e->data, data, size);
 
       for(;;) {
-        if(tail_go_ahead()) {
-          continue;
-        }
-        
-        Ver tail = que_->tail.snapshot();
-        Entry* tail_f = alc_.ptr<Entry>(tail.val);
-        
-        if(__sync_bool_compare_and_swap(&tail_f->next, Entry::END, alloc_id)) {
+        Ver tail = get_tail();
+        assert(tail.val != alloc_id);
+        Entry* e2 = alc_.ptr<Entry>(tail.val);
+        if(__sync_bool_compare_and_swap(&e2->next, Entry::END, alloc_id)) {
           break;
         }
       }
@@ -116,22 +113,30 @@ namespace imque {
 
     bool deq(std::string& buf) {
       for(;;) {
-        if(tail_go_ahead()) {
-          continue;
-        }
-        // XXX: head と tail のinvariant
         Ver head = que_->head.snapshot();
-        assert(head.val != Entry::END);
-
-        Entry* tail_f = alc_.ptr<Entry>(head.val);
-        uint32_t tail_f_next = tail_f->next;
-        if(tail_f_next == Entry::END) {
+        Ver tail = get_tail();
+        
+        if(head.val == tail.val) { // TODO: version check
           return false; // empty
         }
+        assert(head.ver < tail.ver);
+
+        Entry* e = alc_.ptr<Entry>(head.val);
+        uint32_t e_next = e->next;
+        if(que_->head.toUint64() != head.toUint64()) {
+          continue;
+        }
+        assert(e_next != Entry::END);
+        /*
+        if(e_next == Entry::END) {
+          return false; // empty
+        }
+        */
         
-        Ver new_head = {head.ver+1, tail_f_next};
+        Ver new_head = {head.ver+1, e_next};
         if(__sync_bool_compare_and_swap(que_->head.toUint64Ptr(), head.toUint64(), new_head.toUint64())) {
-          buf.assign(tail_f->data, tail_f->size);
+          Entry* e2 = alc_.ptr<Entry>(e_next);
+          buf.assign(e2->data, e2->size);
           assert(alc_.release(head.val));
           return true;
         }
