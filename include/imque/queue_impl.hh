@@ -11,8 +11,8 @@
 namespace imque {
   class QueueImpl {
     struct Entry {
-      uint32_t state:1;
-      uint32_t value:31;
+      uint32_t state:2;
+      uint32_t value:30;
 
       enum STATE {
         FREE = 0,
@@ -28,6 +28,7 @@ namespace imque {
     };
 
     struct Header {
+      volatile uint32_t version; // XXX: name
       volatile uint32_t read_pos;
       volatile uint32_t write_pos;
       Stat stat;
@@ -52,6 +53,7 @@ namespace imque {
     void init() {
       alc_.init();
       
+      que_->version = 0;
       que_->read_pos  = 0;
       que_->write_pos = 0;
       que_->stat.overflowed_count = 0;
@@ -154,7 +156,8 @@ namespace imque {
         return deq_impl();
       }
 
-      Entry new_e = {Entry::FREE, 0};
+      uint32_t new_version = __sync_fetch_and_add(&que_->version, 1);
+      Entry new_e = {Entry::FREE, new_version};
       if(__sync_bool_compare_and_swap(pe->uint32_ptr(), e.uint32(), new_e.uint32()) == false) {
         return deq_impl();
       }

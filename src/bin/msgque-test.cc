@@ -63,7 +63,7 @@ void reader_start(imque::Queue& que) {
 }
 
 int main(int argc, char** argv) {
-  imque::Queue que(1024, 1024*1024);
+  imque::Queue que(512, 1024*1024);
   que.init();
   signal(SIGSEGV, sigsegv_handler);
 

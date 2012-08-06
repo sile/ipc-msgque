@@ -48,8 +48,9 @@ namespace imque {
     Handle(uint32_t handle) : intval(handle) {}
 
     struct {
+      uint32_t pad:2;
       uint32_t sc:4;
-      uint32_t idx:28;
+      uint32_t idx:26;
     } u;
     uint32_t intval;
   };
