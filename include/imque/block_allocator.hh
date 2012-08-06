@@ -164,6 +164,7 @@ namespace imque {
       __sync_sub_and_fetch(&sb.used_count_, 1);
 
       if(used_count < free_count) {
+        // TODO: 以下がfalseを返した場合は、freelistに追加するようにする
         return alc_.release(h.u.idx);
       }
 

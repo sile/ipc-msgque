@@ -13,7 +13,7 @@ block-allocator-test:
 
 msgque-test:
 	mkdir -p bin
-	g++ -Iinclude ${CPPFLAGS} -O3 -o bin/msgque-test src/bin/msgque-test.cc
+	g++ -Iinclude ${CPPFLAGS} -O2 -o bin/msgque-test src/bin/msgque-test.cc
 
 mt-malloc-test:
 	mkdir -p bin
