@@ -114,12 +114,10 @@ namespace imque {
     bool deq(std::string& buf) {
       for(;;) {
         Ver head = que_->head.snapshot();
-        Ver tail = get_tail();
-        
-        if(head.val == tail.val) { // TODO: version check
+        if(isEmpty()) {
           return false; // empty
         }
-        assert(head.ver < tail.ver);
+        assert(head.ver < que_->tail.ver);
 
         Entry* e = alc_.ptr<Entry>(head.val);
         uint32_t e_next = e->next;
@@ -127,11 +125,6 @@ namespace imque {
           continue;
         }
         assert(e_next != Entry::END);
-        /*
-        if(e_next == Entry::END) {
-          return false; // empty
-        }
-        */
         
         Ver new_head = {head.ver+1, e_next};
         if(__sync_bool_compare_and_swap(que_->head.toUint64Ptr(), head.toUint64(), new_head.toUint64())) {
@@ -143,8 +136,7 @@ namespace imque {
       }
     }
 
-    bool isEmpty() const { return que_->head.val == que_->tail.val; } // XXX:
-    bool isFull()  const { return false; } // TODO: delete
+    bool isEmpty() { return que_->head.ver == get_tail().ver; }
 
     static size_t calc_need_byte_size(size_t data_size) {
       return que_size() + dat_size(data_size);
