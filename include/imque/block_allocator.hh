@@ -12,17 +12,26 @@ namespace imque {
     uint32_t next;
   };
 
+  template <typename FROM, typename TO>
+  TO conv(FROM f) {
+    union {
+      FROM f;
+      TO t;
+    } u;
+    u.f = f;
+    return u.t;
+  }
+
   struct Ver {
     uint32_t ver_;
     uint32_t val_;
 
     static Ver fromInt(uint64_t v) {
-      uint64_t* tmp = &v;
-      return *reinterpret_cast<Ver*>(tmp);
+      return conv<uint64_t,Ver>(v);
     }
 
     uint64_t toInt() {
-      return *reinterpret_cast<uint64_t*>(this);
+      return conv<Ver,uint64_t>(*this);
     }
   };
   

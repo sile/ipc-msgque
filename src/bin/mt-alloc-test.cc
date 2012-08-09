@@ -12,7 +12,7 @@
 #include <imque/block_allocator.hh>
 #include <imque/shared_memory.hh>
 
-typedef imque::Allocator allocator;
+typedef imque::BlockAllocator allocator;
 
 const int CHILD_NUM  = 500;
 const int LOOP_COUNT = 1000;
