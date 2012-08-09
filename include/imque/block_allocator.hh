@@ -132,7 +132,7 @@ namespace imque {
       }
       
       uint32_t alloc_size = 32;
-      for(int i=1; i < h.u.sc; i++) {
+      for(uint32_t i=1; i < h.u.sc; i++) {
         alloc_size *= 2;
       }
       assert(alloc_size >= size);
