@@ -10,7 +10,7 @@
 
 #include <imque/allocator.hh>
 #include <imque/block_allocator.hh>
-#include <imque/shared_memory.hh>
+#include <imque/ipc/shared_memory.hh>
 
 typedef imque::BlockAllocator allocator;
 

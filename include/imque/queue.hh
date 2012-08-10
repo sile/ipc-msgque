@@ -1,8 +1,8 @@
 #ifndef IMQUE_QUEUE_HH
 #define IMQUE_QUEUE_HH
 
-#include "shared_memory.hh"
-#include "queue_impl.hh"
+#include "ipc/shared_memory.hh"
+#include "queue/queue_impl.hh"
 
 #include <string>
 #include <sys/types.h>

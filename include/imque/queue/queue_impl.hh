@@ -1,9 +1,8 @@
 #ifndef IMQUE_QUEUE_IMPL_HH
 #define IMQUE_QUEUE_IMPL_HH
 
-#include "shared_memory.hh"
-#include "allocator.hh"
-#include "block_allocator.hh"
+#include "../ipc/shared_memory.hh" // XXX: 最終的には無くす
+#include "../block_allocator.hh"
 
 #include <inttypes.h>
 #include <string.h>

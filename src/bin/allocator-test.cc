@@ -1,7 +1,7 @@
 #include <iostream>
 #include <string.h>
 #include <imque/allocator.hh>
-#include <imque/shared_memory.hh>
+#include <imque/ipc/shared_memory.hh>
 
 #include <sys/types.h>
 #include <sys/wait.h>
