@@ -56,7 +56,7 @@ void reader_start(imque::Queue& que) {
       // std::cout << "@ [" << getpid() << "] queue is empty" << std::endl;
       usleep(rand() % 200);
     } else {
-      // std::cout << "@ [" << getpid() << "] read: " << s << std::endl;
+      //std::cout << "@ [" << getpid() << "] read: " << s << std::endl;
     }
   }
   std::cout << "# exit: " << getpid() << std::endl;

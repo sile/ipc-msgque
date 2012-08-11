@@ -18,7 +18,7 @@ namespace imque {
         FREE = 0,
         USED = 1
       };
-    };
+    }__attribute__((__packed__));
 
     struct Stat {
       uint32_t overflowed_count;
@@ -26,8 +26,8 @@ namespace imque {
 
     struct Header {
       uint32_t version; // XXX: name
-      uint32_t read_pos;
-      uint32_t write_pos;
+      volatile uint32_t read_pos;
+      volatile uint32_t write_pos;
       Stat stat;
       uint32_t entry_count;
       Entry entries[0];
