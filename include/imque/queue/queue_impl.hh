@@ -25,7 +25,7 @@ namespace imque {
     };
 
     struct Header {
-      uint32_t version; // XXX: name
+      volatile uint32_t version; // XXX: name
       volatile uint32_t read_pos;
       volatile uint32_t write_pos;
       Stat stat;
