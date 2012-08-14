@@ -2,6 +2,7 @@
 #include <string.h>
 #include <imque/allocator.hh>
 #include <imque/ipc/shared_memory.hh>
+#include <imque/allocator/variable_allocator.hh>
 
 #include <sys/types.h>
 #include <sys/wait.h>
@@ -45,6 +46,9 @@ void child_start(allocator& alc) {
 
 
 int main() {
+  imque::allocator::VariableAllocator va;
+  std::cout << "# " << sizeof(va) << std::endl;
+
   pid_t children[CHILD_NUM];
 
   imque::SharedMemory mm(1024*CHILD_NUM);
