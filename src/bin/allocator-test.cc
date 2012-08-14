@@ -9,7 +9,8 @@
 #include <unistd.h>
 #include <stdlib.h>
 
-typedef imque::Allocator allocator;
+//typedef imque::Allocator allocator;
+typedef imque::allocator::VariableAllocator allocator;
 
 const int CHILD_NUM = 500;
 const int LOOP_COUNT = 1000;
@@ -30,6 +31,8 @@ void child_start(allocator& alc) {
     //std::cout << "[" << getpid() << "] " << size << " => " << idx << std::endl;
     if(idx != 0) {
       memset(alc.ptr<char>(idx), rand()%0x100, size);
+    } else {
+      std::cerr << "# out of memory" << std::endl;
     }
     usleep(rand() % 400); 
     assert(alc.release(idx));
@@ -46,9 +49,6 @@ void child_start(allocator& alc) {
 
 
 int main() {
-  imque::allocator::VariableAllocator va;
-  std::cout << "# " << sizeof(va) << std::endl;
-
   pid_t children[CHILD_NUM];
 
   imque::SharedMemory mm(1024*CHILD_NUM);
@@ -56,6 +56,7 @@ int main() {
     std::cerr << "mmap() failed" << std::endl;
     return 1;
   }
+
   allocator alc(mm.ptr<void>(), mm.size());
   alc.init();
   signal(SIGSEGV, sigsegv_handler);
