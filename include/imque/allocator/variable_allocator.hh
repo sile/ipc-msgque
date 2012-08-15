@@ -235,8 +235,8 @@ namespace imque {
           return true;
         }
 
-        return (pred.compare_and_swap(pred.node().count, pred.node().status | Node::JOIN_HEAD) == false || 
-                curr.compare_and_swap(curr.node().count, curr.node().status | Node::JOIN_TAIL) == false);
+        return (pred.compare_and_swap(pred.node().count, pred.node().status | Node::JOIN_HEAD) &&
+                curr.compare_and_swap(curr.node().count, curr.node().status | Node::JOIN_TAIL));
       }
     
       bool join_nodes_if_need(NodeSnapshot& pred, NodeSnapshot& curr) {
