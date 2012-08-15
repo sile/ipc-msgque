@@ -1,6 +1,5 @@
 #include <iostream>
 #include <string.h>
-#include <imque/allocator.hh>
 #include <imque/ipc/shared_memory.hh>
 #include <imque/allocator/variable_allocator.hh>
 
@@ -9,7 +8,16 @@
 #include <unistd.h>
 #include <stdlib.h>
 
-//typedef imque::Allocator allocator;
+/*
+ * パラメータ:
+ * - プロセス数:
+ * - 各プロセスのスレッド数:
+ * - ループ数
+ * - 割当サイズの幅
+ * - interval
+ * - アロケート方法(malloc or variable_allocator or block_allocator)
+ */
+
 typedef imque::allocator::VariableAllocator allocator;
 
 const int CHILD_NUM = 500;
@@ -51,7 +59,7 @@ void child_start(allocator& alc) {
 int main() {
   pid_t children[CHILD_NUM];
 
-  imque::SharedMemory mm(1024*CHILD_NUM);
+  imque::ipc::SharedMemory mm(1024*CHILD_NUM);
   if(! mm) {
     std::cerr << "mmap() failed" << std::endl;
     return 1;

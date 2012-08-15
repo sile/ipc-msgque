@@ -66,7 +66,7 @@ namespace imque {
 
   class BlockAllocator {
   public:
-    BlockAllocator(void* region, uint32_t size) 
+    BlockAllocator(void* region, uint32_t size)  // TODO: Allocatorインスタンスを受け取るようにした方が汎用性が上がる(sb_とかはallocateメソッドで割り当てる)
       : sb_(reinterpret_cast<SuperBlock*>(region)),
         alc_(sb_+6, //reinterpret_cast<char*>(region)+sizeof(SuperBlock)*6, 
              size - sizeof(SuperBlock)*6) {

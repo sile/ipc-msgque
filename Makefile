@@ -1,7 +1,9 @@
-all: msgque-test block-allocator-test allocator-test mt-malloc-test mt-alloc-test
-
 CPPFLAGS+=-Wall
 CPPFLAGS+=-Werror
+
+all: msgque-test block-allocator-test mt-malloc-test mt-alloc-test
+
+test: allocator-test
 
 allocator-test:
 	mkdir -p bin

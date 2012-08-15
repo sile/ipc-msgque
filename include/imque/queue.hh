@@ -39,7 +39,7 @@ namespace imque {
     void resetOverflowedCount() { impl_.resetOverflowedCount(); }
 
   private:
-    SharedMemory shm_;
+    ipc::SharedMemory shm_;
     QueueImpl    impl_;
   };
 }

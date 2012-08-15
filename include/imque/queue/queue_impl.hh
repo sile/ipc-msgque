@@ -37,7 +37,7 @@ namespace imque {
     };
 
   public:
-    QueueImpl(size_t entry_count, SharedMemory& shm)
+    QueueImpl(size_t entry_count, ipc::SharedMemory& shm)
       : que_(shm.ptr<Header>()),
         alc_(shm.ptr<void>(que_size(entry_count)), shm.size()-que_size(entry_count)) {
       if(shm) {

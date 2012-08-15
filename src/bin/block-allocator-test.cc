@@ -62,7 +62,7 @@ void child_start(allocator& alc) {
 int main() {
   pid_t children[CHILD_NUM];
 
-  imque::SharedMemory mm(1024*CHILD_NUM);
+  imque::ipc::SharedMemory mm(1024*CHILD_NUM);
   if(! mm) {
     std::cerr << "mmap() failed" << std::endl;
     return 1;

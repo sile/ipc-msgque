@@ -47,7 +47,7 @@ int main() {
   pthread_t children[CHILD_NUM];
   signal(SIGSEGV, sigsegv_handler);
 
-  imque::SharedMemory mm(1024*CHILD_NUM);
+  imque::ipc::SharedMemory mm(1024*CHILD_NUM);
   if(! mm) {
     std::cerr << "mmap() failed" << std::endl;
     return 1;
