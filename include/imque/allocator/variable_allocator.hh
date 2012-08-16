@@ -77,6 +77,9 @@ namespace imque {
       static const uint32_t NODE_COUNT_LIMIT = 0x1000000;
 
     public:
+      typedef uint32_t DESCRIPTOR_TYPE;
+
+    public:
       VariableAllocator(void* region, uint32_t size)
         : node_count_(size/(sizeof(Node)+sizeof(Chunk))),
           nodes_(reinterpret_cast<Node*>(region)),
@@ -156,11 +159,13 @@ namespace imque {
         return true;
       }
 
-      template<typename T>
-      T* ptr(uint32_t descriptor) const { return reinterpret_cast<T*>(chunks_ + descriptor); }
+      void* void_ptr(uint32_t descriptor) { return ptr<void>(descriptor); }
 
       template<typename T>
-      T* ptr(uint32_t descriptor, uint32_t offset) const { return reinterpret_cast<T*>(ptr<char>(descriptor)+offset); }
+      T* ptr(uint32_t descriptor) { return reinterpret_cast<T*>(chunks_ + descriptor); }
+
+      template<typename T>
+      T* ptr(uint32_t descriptor, uint32_t offset) { return reinterpret_cast<T*>(ptr<char>(descriptor)+offset); }
       
     private:
       struct IsEnoughChunk {

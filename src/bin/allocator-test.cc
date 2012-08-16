@@ -11,6 +11,7 @@
 #include <sys/wait.h>
 #include <unistd.h>
 #include <errno.h>
+#include <inttypes.h>
 
 /*
  * パラメータ:
@@ -30,15 +31,71 @@ struct Parameter {
   int max_hold_micro_sec;
   int alloc_size_min;
   int alloc_size_max;
+  int shm_size;
 };
 
-void child_start(const Parameter& param) {
-  sleep(3);
+// TODO: マルチスレッド対応
+// TODO: 各種統計値の取得
+template<class Allocator>
+void child_start(Allocator& alc, const Parameter& param) {
+  srand(time(NULL) + getpid());
+  
+  int size_range = param.alloc_size_max-param.alloc_size_min;
+  for(int i=0; i < param.loop_count; i++) {
+    uint32_t size = static_cast<uint32_t>((rand() % size_range) + param.alloc_size_min);
+    typename Allocator::DESCRIPTOR_TYPE md = alc.allocate(size);
+    usleep(rand() % param.max_hold_micro_sec);
+    
+    if(md != 0) {
+      memset(alc.template ptr<void>(md), rand()%0x100, size);
+      alc.release(md); // TODO: リリース失敗数のカウント
+    }
+  }
 }
 
+template<class Allocator>
+void parent_start(Allocator& alc, const Parameter& param) {
+  std::vector<pid_t> children(param.process_count);
+  
+  for(int i=0; i < param.process_count; i++) {
+    children[i] = fork();
+    switch(children[i]) {
+    case 0:
+      child_start(alc, param);
+      return;
+    case -1:
+      std::cerr << "ERROR: fork() failed: " << strerror(errno) << std::endl;
+      return;
+    }
+  }
+  
+  for(int i=0; i < param.process_count; i++) {
+    // TODO: 正常終了か異常終了(シグナル)かなどの情報を収集
+    waitpid(children[i], NULL, 0);
+  }
+}
+
+class MallocAllocator {
+public:
+  typedef void* DESCRIPTOR_TYPE;
+
+  DESCRIPTOR_TYPE allocate(uint32_t size) {
+    return malloc(size);
+  }
+
+  bool release(DESCRIPTOR_TYPE descriptor) {
+    free(descriptor);
+    return true;
+  }
+
+  template<typename T>
+  T* ptr(DESCRIPTOR_TYPE descriptor) { return reinterpret_cast<T*>(descriptor); }
+};
+
 int main(int argc, char** argv) {
-  if(argc != 8) {
-    std::cerr << "Usage: allocator-test ALLOCATION_METHOD(variable|fix|malloc) PROCESS_COUNT PER_PROCESS_THREAD_COUNT LOOP_COUNT MAX_HOLD_TIME(micro sec) ALLOC_SIZE_MIN ALLOC_SIZE_MAX" << std::endl;
+  if(argc != 9) {
+  usage:
+    std::cerr << "Usage: allocator-test ALLOCATION_METHOD(variable|fix|malloc) PROCESS_COUNT PER_PROCESS_THREAD_COUNT LOOP_COUNT MAX_HOLD_TIME(micro sec) ALLOC_SIZE_MIN ALLOC_SIZE_MAX SHM_SIZE" << std::endl;
     return 1;
   }
 
@@ -49,96 +106,32 @@ int main(int argc, char** argv) {
     atoi(argv[4]),
     atoi(argv[5]),
     atoi(argv[6]),
-    atoi(argv[7])
+    atoi(argv[7]),
+    atoi(argv[8])
   };
 
-  if(param.method != "variable" &&
-     param.method != "fix" &&
-     param.method != "malloc") {
-    std::cerr << "Usage: allocator-test ALLOCATION_METHOD(variable|fix|malloc) PROCESS_COUNT PER_PROCESS_THREAD_COUNT LOOP_COUNT MAX_HOLD_TIME(micro sec) ALLOC_SIZE_MIN ALLOC_SIZE_MAX" << std::endl;    
+  imque::ipc::SharedMemory shm(param.shm_size);
+  if(! shm) {
+    std::cerr << "[ERROR] shared memory initialization failed" << std::endl;
     return 1;
   }
 
-  std::vector<pid_t> children(param.process_count);
-  for(int i=0; i < param.process_count; i++) {
-    children[i] = fork();
-    switch(children[i]) {
-    case 0:
-      child_start(param);
-      return 0;
-    case -1:
-      std::cerr << "ERROR: fork() failed: " << strerror(errno) << std::endl;
+  if(param.method == "variable") {
+    imque::allocator::VariableAllocator alc(shm.ptr<void>(), shm.size());
+    if(! alc) {
+      std::cerr << "[ERROR] allocator initialization failed" << std::endl;
       return 1;
     }
+    alc.init();
+    parent_start(alc, param);
+  } else if (param.method == "fix") {
+    // TODO:
+  } else if (param.method == "malloc") {
+    MallocAllocator alc;
+    parent_start(alc, param);
+  } else {
+    goto usage;
   }
   
-  for(int i=0; i < param.process_count; i++) {
-    waitpid(children[i], NULL, 0);
-  }
-
   return 0;
 }
-
-/*
-typedef imque::allocator::VariableAllocator allocator;
-
-const int CHILD_NUM = 500;
-const int LOOP_COUNT = 1000;
-
-void sigsegv_handler(int sig) {
-  std::cerr << "#" << getpid() << ":" << sig << std::endl;
-  exit(1);
-}
-
-void child_start(allocator& alc) {
-  std::cout << "# child: " << getpid() << std::endl;
-  srand(time(NULL) + getpid());
-
-  for(int i=0; i < LOOP_COUNT; i++) {
-    unsigned size = (rand() % 1024) + 1;
-
-    uint32_t idx = alc.allocate(size);
-    //std::cout << "[" << getpid() << "] " << size << " => " << idx << std::endl;
-    if(idx != 0) {
-      memset(alc.ptr<char>(idx), rand()%0x100, size);
-    } else {
-      std::cerr << "# out of memory" << std::endl;
-    }
-    usleep(rand() % 400); 
-    assert(alc.release(idx));
-  }
-  std::cout << "# exit: " << getpid() << std::endl;
-}
-
-
-int main() {
-  pid_t children[CHILD_NUM];
-
-  imque::ipc::SharedMemory mm(1024*CHILD_NUM);
-  if(! mm) {
-    std::cerr << "mmap() failed" << std::endl;
-    return 1;
-  }
-
-  allocator alc(mm.ptr<void>(), mm.size());
-  alc.init();
-  signal(SIGSEGV, sigsegv_handler);
-
-  for(int i=0; i < CHILD_NUM; i++) {
-    pid_t child = fork();
-    if(child == 0) {
-      child_start(alc);
-      return 0;
-    }
-    children[i] = child;
-  }
-
-  //child_start(alc);
-
-  for(int i=0; i < CHILD_NUM; i++) {
-    waitpid(children[i], NULL, 0);
-  }
-
-  return 0;
-}
-*/
