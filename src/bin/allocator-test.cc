@@ -1,7 +1,6 @@
 #include <imque/ipc/shared_memory.hh>
 #include <imque/allocator/variable_allocator.hh>
 #include <imque/allocator/fixed_allocator.hh>
-#include <imque/block_allocator.hh> // XXX: 暫定
 
 #include <iostream>
 #include <string>
@@ -18,7 +17,7 @@
 #include <time.h>
 
 struct Parameter {
-  std::string method; // "variable" | "fix" | "malloc"
+  std::string method; // "variable" | "fixed" | "malloc"
   int process_count;
   int loop_count;
   int max_hold_micro_sec;
@@ -199,7 +198,7 @@ public:
 int main(int argc, char** argv) {
   if(argc != 8) {
   usage:
-    std::cerr << "Usage: allocator-test ALLOCATION_METHOD(variable|fix|malloc) PROCESS_COUNT LOOP_COUNT MAX_HOLD_TIME(micro sec) ALLOC_SIZE_MIN ALLOC_SIZE_MAX SHM_SIZE" << std::endl;
+    std::cerr << "Usage: allocator-test ALLOCATION_METHOD(variable|fixed|malloc) PROCESS_COUNT LOOP_COUNT MAX_HOLD_TIME(micro sec) ALLOC_SIZE_MIN ALLOC_SIZE_MAX SHM_SIZE" << std::endl;
     return 1;
   }
 
@@ -227,8 +226,8 @@ int main(int argc, char** argv) {
     }
     alc.init();
     parent_start(alc, param);
-  } else if (param.method == "fix") {
-    imque::BlockAllocator alc(shm.ptr<void>(), shm.size());
+  } else if (param.method == "fixed") {
+    imque::allocator::FixedAllocator alc(shm.ptr<void>(), shm.size());
     if(! alc) {
       std::cerr << "[ERROR] allocator initialization failed" << std::endl;
       return 1;

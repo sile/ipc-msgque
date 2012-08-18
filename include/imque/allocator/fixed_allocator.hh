@@ -76,11 +76,11 @@ namespace imque {
         if(size == 0) {
           return 0;
         }
-
+        
         if(size > BLOCK_SIZE_LAST) {
           return base_alc_.allocate(size);
         }
-      
+
         uint32_t sb_id = get_super_block_id(size);
         SuperBlock& sb = super_blocks_[sb_id-1];
       
@@ -95,7 +95,6 @@ namespace imque {
           if(atomic::compare_and_swap(&sb.head, head, new_head)) {
             atomic::add(&sb.used_count, 1);
             atomic::sub(&sb.free_count, 1);
-
             return encode_super_block_id(sb_id, head.next);
           }
         }
@@ -104,8 +103,8 @@ namespace imque {
         if(addr_desc == 0) {
           return 0;
         }
-      
-        atomic::add_and_fetch(&sb.used_count,  1);
+
+        atomic::add(&sb.used_count, 1);
         return encode_super_block_id(sb_id, addr_desc);
       }
 
@@ -161,7 +160,7 @@ namespace imque {
       }
       
       static uint32_t encode_super_block_id(uint32_t id, uint32_t addr_desc) {
-        return addr_desc | (id >> 24);
+        return addr_desc | (id << 24);
       }
 
       static uint32_t decode_super_block_id(uint32_t encoded_addr_desc) {
@@ -169,7 +168,7 @@ namespace imque {
       }
 
       static uint32_t decode_base_addr_desc(uint32_t encoded_addr_desc) {
-        return encoded_addr_desc & 0xFFFFFFFF;
+        return encoded_addr_desc & 0xFFFFFF;
       }
 
     private:
