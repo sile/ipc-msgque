@@ -1,5 +1,6 @@
 #include <imque/ipc/shared_memory.hh>
 #include <imque/allocator/variable_allocator.hh>
+#include <imque/block_allocator.hh> // XXX: 暫定
 
 #include <iostream>
 #include <string>
@@ -226,7 +227,13 @@ int main(int argc, char** argv) {
     alc.init();
     parent_start(alc, param);
   } else if (param.method == "fix") {
-    // TODO:
+    imque::BlockAllocator alc(shm.ptr<void>(), shm.size());
+    if(! alc) {
+      std::cerr << "[ERROR] allocator initialization failed" << std::endl;
+      return 1;
+    }
+    alc.init();
+    parent_start(alc, param);
   } else if (param.method == "malloc") {
     MallocAllocator alc;
     parent_start(alc, param);

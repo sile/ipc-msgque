@@ -1,7 +1,7 @@
 #ifndef IMQUE_BLOCK_ALLOCATOR_HH
 #define IMQUE_BLOCK_ALLOCATOR_HH
 
-#include "allocator.hh"
+#include "allocator/variable_allocator.hh"
 #include <unistd.h>
 #include <sys/types.h>
 #include <sys/syscall.h>
@@ -65,6 +65,9 @@ namespace imque {
   };
 
   class BlockAllocator {
+  public:
+    typedef uint32_t DESCRIPTOR_TYPE;
+
   public:
     BlockAllocator(void* region, uint32_t size)  // TODO: Allocatorインスタンスを受け取るようにした方が汎用性が上がる(sb_とかはallocateメソッドで割り当てる)
       : sb_(reinterpret_cast<SuperBlock*>(region)),
@@ -199,14 +202,19 @@ namespace imque {
     }
     
     template<typename T>
-    T* ptr(uint32_t index) const { return alc_.ptr<T>(Handle(index).u.idx); }
+    T* ptr(uint32_t index) { return alc_.ptr<T>(Handle(index).u.idx); }
 
     template<typename T>
-    T* ptr(uint32_t index, uint32_t offset) const { return alc_.ptr<T>(Handle(index).u.idx, offset); }
-    
+    T* ptr(uint32_t index, uint32_t offset) { return alc_.ptr<T>(Handle(index).u.idx, offset); }
+
+    // XXX:
+    static size_t calc_need_byte_size(size_t size) {
+      return size + size/0.2;
+    }
+
   private:
     SuperBlock* sb_; // 32,64,128,256,512,1024
-    Allocator alc_;
+    allocator::VariableAllocator alc_;
   };
 }
 
