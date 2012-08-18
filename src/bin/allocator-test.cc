@@ -129,11 +129,11 @@ void child_start(Allocator& alc, const Parameter& param) {
 
   std::cout << "#[" << getpid() << "] C: " 
             << "a_ok=" << st.allocate_ok_count << ", "
+            << "r_ok=" << st.release_ok_count << ", "
             << "a_avg=" << calc_average(st.allocate_times) << ", "
             << "a_min=" << calc_min(st.allocate_times) << ", "
             << "a_max=" << calc_max(st.allocate_times) << ", "
             << "a_sd=" << calc_standard_deviation(st.allocate_times) << ", "
-            << "r_ok=" << st.release_ok_count << ", "
             << "r_avg=" << calc_average(st.release_times) << ", "
             << "r_min=" << calc_min(st.release_times) << ", "
             << "r_max=" << calc_max(st.release_times) << ", "

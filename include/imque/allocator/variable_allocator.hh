@@ -136,8 +136,8 @@ namespace imque {
       
         return true;
       }
-
-      // TODO: implement 
+      
+      // TODO: note
       bool fast_release(uint32_t descriptor) {
         return release(descriptor);
       }
