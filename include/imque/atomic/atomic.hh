@@ -12,6 +12,7 @@ namespace imque {
           From from;
           To to;
         } u;
+        u.to = To();
         u.from = v;
         return u.to;
       }

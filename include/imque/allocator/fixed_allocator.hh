@@ -128,15 +128,13 @@ namespace imque {
           return true;
         }
         
-        for(;;) {
+        do {
           HeadBlock head = atomic::fetch(&sb.head);
           HeadBlock new_head = {head.version+1, base_addr_desc};
           base_alc_.ptr<Block>(new_head.next)->next = head.next;
 
-          if(atomic::compare_and_swap(&sb.head, head, new_head)) {
-            break;
-          }
-        }
+        } while(atomic::compare_and_swap(&sb.head, head, new_head) == false);
+
         atomic::sub(&sb.used_count, 1);
         atomic::add(&sb.free_count, 1);
         return true;
