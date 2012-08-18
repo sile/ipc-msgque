@@ -136,6 +136,7 @@ namespace imque {
         if(find_candidate(IsPredecessor(node_index), pred) == false) {
           return false;
         }
+        // XXX: 以下のassertが満たされないことがある: allocator-test variable 200 100000 0 10 1000 10000000
         assert(node_index >= index(pred)+pred.node().count);
         assert(pred.node().is_avaiable());
 
