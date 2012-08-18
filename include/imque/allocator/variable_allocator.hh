@@ -26,44 +26,22 @@ namespace imque {
         bool is_join_tail() const { return status & JOIN_TAIL; }
       };
 
-      class NodeSnapshot {
-      public:
-        NodeSnapshot() : ptr_(NULL) {}
-        NodeSnapshot(Node* ptr) { update(ptr); }
-      
-        void update(Node* ptr) {
-          ptr_ = ptr;
-          val_ = atomic::fetch(ptr);
-        }
-        
-        const Node& node() const { return val_; }
-        const Node* place() const { return ptr_; }
-
-        bool isModified() const { 
-          Node tmp_val = atomic::fetch(ptr_);
-          return memcmp(&tmp_val, &val_, sizeof(Node)) != 0;
-        }
-        
-        bool compare_and_swap(const Node& new_val) {
-          if(atomic::compare_and_swap(ptr_, val_, new_val)) {
-            val_ = new_val;
-            return true;
-          }
-          return false;
-        }
-
-        bool compare_and_swap(uint32_t new_count, uint32_t new_status) {
-          Node new_node = {val_.next, new_count, new_status};
-          return compare_and_swap(new_node);
-        }
-
-      private:
-        Node* ptr_;
-        Node  val_;
-      };
-      
       struct Chunk {
         char padding[32];
+      };
+
+      class NodeSnapshot : public atomic::Snapshot<Node> {
+      public:
+        NodeSnapshot() : atomic::Snapshot<Node>() {}
+        NodeSnapshot(Node* ptr) : atomic::Snapshot<Node>(ptr) {}
+        
+        bool compare_and_swap_count(uint32_t new_count) {
+          return compare_and_swap((Node){val_.next, new_count, val_.status});
+        }
+        
+        bool compare_and_swap_status(uint32_t new_status) {
+          return compare_and_swap((Node){val_.next, val_.count, new_status});
+        }
       };
     }
 
@@ -114,7 +92,7 @@ namespace imque {
         }
 
         uint32_t new_count = cand.node().count - need_chunk_count;
-        if(cand.compare_and_swap(new_count, Node::AVAILABLE) == false) {
+        if(cand.compare_and_swap_count(new_count) == false) {
           return allocate(size);
         }
       
@@ -241,8 +219,8 @@ namespace imque {
           return true;
         }
 
-        return (pred.compare_and_swap(pred.node().count, pred.node().status | Node::JOIN_HEAD) &&
-                curr.compare_and_swap(curr.node().count, curr.node().status | Node::JOIN_TAIL));
+        return (pred.compare_and_swap_status(pred.node().status | Node::JOIN_HEAD) &&
+                curr.compare_and_swap_status(curr.node().status | Node::JOIN_TAIL));
       }
     
       bool join_nodes_if_need(NodeSnapshot& pred, NodeSnapshot& curr) {

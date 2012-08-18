@@ -64,6 +64,38 @@ namespace imque {
     T fetch(T* place) {
       return add_and_fetch(place, 0);
     }
+
+    template<typename T>
+    class Snapshot {
+    public:
+      Snapshot() : ptr_(NULL) {}
+      Snapshot(T* ptr) { update(ptr); }
+      
+      void update(T* ptr) {
+        ptr_ = ptr;
+        val_ = atomic::fetch(ptr);
+      }
+      
+      const T& node() const { return val_; }
+      const T* place() const { return ptr_; }
+
+      bool isModified() const { 
+        T tmp_val = atomic::fetch(ptr_);
+        return memcmp(&tmp_val, &val_, sizeof(T)) != 0;
+      }
+      
+      bool compare_and_swap(const T& new_val) {
+        if(atomic::compare_and_swap(ptr_, val_, new_val)) {
+          val_ = new_val;
+          return true;
+        }
+        return false;
+      }
+
+      protected:
+        T* ptr_;
+        T  val_;
+    };
   }
 }
 
