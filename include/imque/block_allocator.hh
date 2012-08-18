@@ -57,9 +57,8 @@ namespace imque {
     Handle(uint32_t handle) : intval(handle) {}
 
     struct {
-      uint32_t pad:2;
-      uint32_t sc:4;
-      uint32_t idx:26;
+      uint32_t sc:8;
+      uint32_t idx:24;
     } u;
     uint32_t intval;
   };
@@ -213,7 +212,7 @@ namespace imque {
     }
 
   private:
-    SuperBlock* sb_; // 32,64,128,256,512,1024
+    SuperBlock* sb_; // 32,64,128,256,512,1024,2048,4096
     allocator::VariableAllocator alc_;
   };
 }

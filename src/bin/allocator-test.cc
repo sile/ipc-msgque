@@ -1,5 +1,6 @@
 #include <imque/ipc/shared_memory.hh>
 #include <imque/allocator/variable_allocator.hh>
+#include <imque/allocator/fixed_allocator.hh>
 #include <imque/block_allocator.hh> // XXX: 暫定
 
 #include <iostream>
@@ -88,7 +89,7 @@ long calc_min(const std::vector<long>& ary) {
   return min;
 }
   
-float calc_standard_deviation(const std::vector<long>& ary) {
+long calc_standard_deviation(const std::vector<long>& ary) {
   long avg = calc_average(ary);
   long long sum = 0;
   for(std::size_t i=1; i < ary.size(); i++) {
@@ -96,7 +97,7 @@ float calc_standard_deviation(const std::vector<long>& ary) {
       sum += pow(ary[i] - avg, 2);
     }
   }
-  return static_cast<float>(sqrt(sum / ary.size()));
+  return static_cast<long>(sqrt(sum / ary.size()));
 }
 
 template<class Allocator>

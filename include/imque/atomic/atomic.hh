@@ -61,6 +61,18 @@ namespace imque {
     }
 
     template<typename T>
+    void add(T* place, int delta) {
+      typedef typename SizeToType<sizeof(T)>::TYPE uint;
+      __sync_add_and_fetch(union_conv<T, uint>(place), delta);
+    }
+    
+    template<typename T>
+    void sub(T* place, int delta) {
+      typedef typename SizeToType<sizeof(T)>::TYPE uint;
+      __sync_sub_and_fetch(union_conv<T, uint>(place), delta);
+    }
+
+    template<typename T>
     T fetch(T* place) {
       return add_and_fetch(place, 0);
     }

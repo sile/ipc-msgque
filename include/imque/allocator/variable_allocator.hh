@@ -52,7 +52,7 @@ namespace imque {
       typedef VariableAllocatorAux::Chunk Chunk;
       
       static const uint32_t MAX_RETRY_COUNT = 32;
-      static const uint32_t NODE_COUNT_LIMIT = 0x1000000;
+      static const uint32_t NODE_COUNT_LIMIT = 0x1000000; // 24bit
 
     public:
       typedef uint32_t DESCRIPTOR_TYPE;
@@ -102,7 +102,6 @@ namespace imque {
         return allocated_node_index;
       }
 
-      
       bool release(uint32_t descriptor) {
         if(descriptor == 0 || descriptor >= node_count_) {
           assert(descriptor < node_count_);
@@ -138,13 +137,16 @@ namespace imque {
         return true;
       }
 
-      void* void_ptr(uint32_t descriptor) { return ptr<void>(descriptor); }
+      // TODO: implement 
+      bool fast_release(uint32_t descriptor) {
+        return release(descriptor);
+      }
 
       template<typename T>
-      T* ptr(uint32_t descriptor) { return reinterpret_cast<T*>(chunks_ + descriptor); }
+      T* ptr(uint32_t descriptor) const { return reinterpret_cast<T*>(chunks_ + descriptor); }
 
       template<typename T>
-      T* ptr(uint32_t descriptor, uint32_t offset) { return reinterpret_cast<T*>(ptr<char>(descriptor)+offset); }
+      T* ptr(uint32_t descriptor, uint32_t offset) const { return reinterpret_cast<T*>(ptr<char>(descriptor)+offset); }
       
     private:
       struct IsEnoughChunk {
