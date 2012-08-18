@@ -7,7 +7,7 @@ test: allocator-test
 
 allocator-test:
 	mkdir -p bin
-	g++ -Iinclude ${CPPFLAGS} -O2 -o bin/allocator-test src/bin/allocator-test.cc
+	g++ -Iinclude ${CPPFLAGS} -O2 -o bin/allocator-test src/bin/allocator-test.cc -lrt
 
 block-allocator-test:
 	mkdir -p bin

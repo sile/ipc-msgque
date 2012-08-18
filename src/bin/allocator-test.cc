@@ -6,27 +6,18 @@
 #include <vector>
 #include <string.h>
 #include <stdlib.h>
+#include <math.h>
 
 #include <sys/types.h>
 #include <sys/wait.h>
 #include <unistd.h>
 #include <errno.h>
 #include <inttypes.h>
-
-/*
- * パラメータ:
- * - プロセス数:
- * - 各プロセスのスレッド数:
- * - ループ数
- * - 割当サイズの幅(min .. max)
- * - interval
- * - アロケート方法(malloc or variable_allocator or block_allocator)
- */
+#include <time.h>
 
 struct Parameter {
   std::string method; // "variable" | "fix" | "malloc"
   int process_count;
-  int thread_count;
   int loop_count;
   int max_hold_micro_sec;
   int alloc_size_min;
@@ -34,23 +25,119 @@ struct Parameter {
   int shm_size;
 };
 
-// TODO: マルチスレッド対応
-// TODO: 各種統計値の取得
+class NanoTimer {
+public:
+  NanoTimer() {
+    clock_gettime(CLOCK_REALTIME, &t);
+  }
+
+  long elapsed() {
+    timespec now;
+    clock_gettime(CLOCK_REALTIME, &now);
+    return ns(now) - ns(t);
+  }
+
+  long ns(const timespec& ts) {
+    return static_cast<long>(static_cast<long long>(ts.tv_sec)*1000*1000*1000 + ts.tv_nsec);
+  }
+
+private:
+  timespec t;
+};
+
+struct Stat {
+  Stat(unsigned loop_count) 
+    : loop_count(loop_count),
+      allocate_ok_count(0),
+      release_ok_count(0),
+      allocate_times(loop_count,-1),
+      release_times(loop_count,-1) {
+  }
+  
+  const unsigned loop_count;
+  unsigned allocate_ok_count;
+  unsigned release_ok_count;
+  std::vector<long> allocate_times;
+  std::vector<long> release_times;
+};
+
+long calc_average(const std::vector<long>& ary) {
+  long long sum = 0;
+  for(std::size_t i=0; i < ary.size(); i++) {
+    if(ary[i] != -1) {
+      sum += ary[i];
+    }
+  }
+  return static_cast<long>(sum / ary.size());
+}
+
+long calc_max(const std::vector<long>& ary) {
+  long max = ary[0];
+  for(std::size_t i=1; i < ary.size(); i++) 
+    if(ary[i] != -1 && max < ary[i])
+      max = ary[i];
+  return max;
+}
+
+long calc_min(const std::vector<long>& ary) {
+  long min = ary[0];
+  for(std::size_t i=1; i < ary.size(); i++)
+    if(ary[i] != -1 && ary[i] < min)
+      min = ary[i];
+  return min;
+}
+  
+float calc_standard_deviation(const std::vector<long>& ary) {
+  long avg = calc_average(ary);
+  long long sum = 0;
+  for(std::size_t i=1; i < ary.size(); i++) {
+    if(ary[i] != -1) {
+      sum += pow(ary[i] - avg, 2);
+    }
+  }
+  return static_cast<float>(sqrt(sum / ary.size()));
+}
+
 template<class Allocator>
 void child_start(Allocator& alc, const Parameter& param) {
   srand(time(NULL) + getpid());
   
+  Stat st(param.loop_count);
   int size_range = param.alloc_size_max-param.alloc_size_min;
   for(int i=0; i < param.loop_count; i++) {
     uint32_t size = static_cast<uint32_t>((rand() % size_range) + param.alloc_size_min);
+
+    NanoTimer t1;
     typename Allocator::DESCRIPTOR_TYPE md = alc.allocate(size);
-    usleep(rand() % param.max_hold_micro_sec);
+    st.allocate_times[i] = t1.elapsed();
+    st.allocate_ok_count += md==0 ? 0 : 1;
+    
+    if(param.max_hold_micro_sec)
+      usleep(rand() % param.max_hold_micro_sec);
     
     if(md != 0) {
       memset(alc.template ptr<void>(md), rand()%0x100, size);
-      alc.release(md); // TODO: リリース失敗数のカウント
+      
+      NanoTimer t2;
+      bool ok = alc.release(md); 
+      st.release_times[i] = t2.elapsed();
+      st.release_ok_count += ok ? 1 : 0;
     }
   }
+
+
+  std::cout << "#[" << getpid() << "] C: " 
+            << "a_ok=" << st.allocate_ok_count << ", "
+            << "a_avg=" << calc_average(st.allocate_times) << ", "
+            << "a_min=" << calc_min(st.allocate_times) << ", "
+            << "a_max=" << calc_max(st.allocate_times) << ", "
+            << "a_sd=" << calc_standard_deviation(st.allocate_times) << ", "
+            << "r_ok=" << st.release_ok_count << ", "
+            << "r_avg=" << calc_average(st.release_times) << ", "
+            << "r_min=" << calc_min(st.release_times) << ", "
+            << "r_max=" << calc_max(st.release_times) << ", "
+            << "r_sd=" << calc_standard_deviation(st.release_times)
+            << std::endl;
 }
 
 template<class Allocator>
@@ -69,10 +156,25 @@ void parent_start(Allocator& alc, const Parameter& param) {
     }
   }
   
+  int exit_num=0;
+  int signal_num=0;
+  int unknown_num=0;
   for(int i=0; i < param.process_count; i++) {
-    // TODO: 正常終了か異常終了(シグナル)かなどの情報を収集
-    waitpid(children[i], NULL, 0);
+    int status;
+    waitpid(children[i], &status, 0);
+    if(WIFEXITED(status)) {
+      exit_num++;
+    } else if(WIFSIGNALED(status)) {
+      signal_num++;
+    } else {
+      unknown_num++;
+    }
   }
+
+  std::cout << "#[" << getpid() << "] P: " 
+            << "exit=" << exit_num << ", " 
+            << "signal=" << signal_num << ", "
+            << "unknown=" << unknown_num << std::endl;
 }
 
 class MallocAllocator {
@@ -93,9 +195,9 @@ public:
 };
 
 int main(int argc, char** argv) {
-  if(argc != 9) {
+  if(argc != 8) {
   usage:
-    std::cerr << "Usage: allocator-test ALLOCATION_METHOD(variable|fix|malloc) PROCESS_COUNT PER_PROCESS_THREAD_COUNT LOOP_COUNT MAX_HOLD_TIME(micro sec) ALLOC_SIZE_MIN ALLOC_SIZE_MAX SHM_SIZE" << std::endl;
+    std::cerr << "Usage: allocator-test ALLOCATION_METHOD(variable|fix|malloc) PROCESS_COUNT LOOP_COUNT MAX_HOLD_TIME(micro sec) ALLOC_SIZE_MIN ALLOC_SIZE_MAX SHM_SIZE" << std::endl;
     return 1;
   }
 
@@ -107,7 +209,6 @@ int main(int argc, char** argv) {
     atoi(argv[5]),
     atoi(argv[6]),
     atoi(argv[7]),
-    atoi(argv[8])
   };
 
   imque::ipc::SharedMemory shm(param.shm_size);
