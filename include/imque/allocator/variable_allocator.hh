@@ -11,7 +11,8 @@ namespace imque {
   namespace allocator {
     namespace VariableAllocatorAux {
       struct Node {
-        uint32_t next;
+        uint32_t next:26;
+        uint32_t version:6;
         uint32_t count:30;
         uint32_t status:2;
         
@@ -24,7 +25,7 @@ namespace imque {
         bool is_avaiable() const { return status == AVAILABLE; }
         bool is_join_head() const { return status & JOIN_HEAD; }
         bool is_join_tail() const { return status & JOIN_TAIL; }
-      };
+      }__attribute__((__packed__));
 
       struct Chunk {
         char padding[32];
@@ -36,11 +37,11 @@ namespace imque {
         NodeSnapshot(Node* ptr) : atomic::Snapshot<Node>(ptr) {}
         
         bool compare_and_swap_count(uint32_t new_count) {
-          return compare_and_swap((Node){val_.next, new_count, val_.status});
+          return compare_and_swap((Node){val_.next, val_.version+1, new_count, val_.status});
         }
         
         bool compare_and_swap_status(uint32_t new_status) {
-          return compare_and_swap((Node){val_.next, val_.count, new_status});
+          return compare_and_swap((Node){val_.next, val_.version+1, val_.count, new_status});
         }
       };
     }
@@ -113,12 +114,11 @@ namespace imque {
         if(find_candidate(IsPredecessor(node_index), pred) == false) {
           return false;
         }
-        // XXX: 以下のassertが満たされないことがある: allocator-test variable 200 100000 0 10 1000 10000000
         assert(node_index >= index(pred)+pred.node().count);
         assert(pred.node().is_avaiable());
 
         Node* node = &nodes_[node_index];
-        Node new_pred_node = {0, 0, Node::AVAILABLE};
+        Node new_pred_node = {0, pred.node().version+1, 0, Node::AVAILABLE};
         if(node_index == index(pred) + pred.node().count) { 
           new_pred_node.next  = pred.node().next;
           new_pred_node.count = pred.node().count + node->count;
@@ -232,6 +232,7 @@ namespace imque {
         assert(is_joinable(pred));
       
         Node new_pred_node = {curr.node().next,
+                              curr.node().version+1,
                               pred.node().count + curr.node().count,
                               (pred.node().status & ~Node::JOIN_HEAD) |
                               (curr.node().status & ~Node::JOIN_TAIL)};
