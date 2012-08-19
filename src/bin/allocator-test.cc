@@ -93,7 +93,7 @@ long calc_standard_deviation(const std::vector<long>& ary) {
   long long sum = 0;
   for(std::size_t i=1; i < ary.size(); i++) {
     if(ary[i] != -1) {
-      sum += pow(ary[i] - avg, 2);
+      sum += static_cast<long>(pow(ary[i] - avg, 2));
     }
   }
   return static_cast<long>(sqrt(sum / ary.size()));

@@ -2,8 +2,9 @@
 #define IMQUE_QUEUE_IMPL_HH
 
 #include "../ipc/shared_memory.hh" // XXX: 最終的には無くす
-#include "../block_allocator.hh"
+
 #include "../atomic/atomic.hh"
+#include "../allocator/fixed_allocator.hh"
 
 #include <inttypes.h>
 #include <string.h>
@@ -168,12 +169,12 @@ namespace imque {
     }
     
     static size_t dat_size(size_t data_size) {
-      return Allocator::calc_need_byte_size(data_size);
+      return data_size + data_size*0.2; // XXX:
     }
 
   private:
     Header*   que_;
-    BlockAllocator alc_;
+    FixedAllocator alc_;
   };
 }
 
