@@ -198,7 +198,7 @@ public:
 int main(int argc, char** argv) {
   if(argc != 8) {
   usage:
-    std::cerr << "Usage: allocator-test ALLOCATION_METHOD(variable|fixed|malloc) PROCESS_COUNT LOOP_COUNT MAX_HOLD_TIME(micro sec) ALLOC_SIZE_MIN ALLOC_SIZE_MAX SHM_SIZE" << std::endl;
+    std::cerr << "Usage: allocator-test ALLOCATION_METHOD(variable|fixed|malloc) PROCESS_COUNT LOOP_COUNT MAX_HOLD_TIME(μs) ALLOC_SIZE_MIN ALLOC_SIZE_MAX SHM_SIZE" << std::endl;
     return 1;
   }
 
