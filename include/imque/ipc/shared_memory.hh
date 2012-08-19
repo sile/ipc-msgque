@@ -45,7 +45,7 @@ namespace imque {
       operator bool() const { return ptr_ != MAP_FAILED; }
 
       template <class T>
-      T* ptr() const { return reinterpret_cast<T*>(ptr_); }
+      T* ptr() const { return *this ? reinterpret_cast<T*>(ptr_) : NULL; }
 
       template <class T>
       T* ptr(size_t offset) const { return reinterpret_cast<T*>(ptr<char>()+offset); }

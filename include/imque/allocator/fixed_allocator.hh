@@ -36,6 +36,7 @@ namespace imque {
       static const uint32_t SUPER_BLOCK_COUNT = 8;
       static const uint32_t BLOCK_SIZE_START = 32;
       static const uint32_t BLOCK_SIZE_LAST  = BLOCK_SIZE_START << (SUPER_BLOCK_COUNT-1);
+      static const uint32_t SUPER_BLOCKS_SIZE = sizeof(SuperBlock)*SUPER_BLOCK_COUNT;
       
     public:
       typedef uint32_t DESCRIPTOR_TYPE;
@@ -44,15 +45,11 @@ namespace imque {
       FixedAllocator(void* region, uint32_t size) 
         : super_blocks_(reinterpret_cast<SuperBlock*>(region)),
           base_alc_(super_blocks_+SUPER_BLOCK_COUNT, 
-                    size - sizeof(SuperBlock)*SUPER_BLOCK_COUNT),
+                    size > SUPER_BLOCKS_SIZE ? size - SUPER_BLOCKS_SIZE : 0),
           region_size_(size) {
       }
 
-      operator bool() const { 
-        return (super_blocks_ != NULL &&
-                region_size_ > sizeof(SuperBlock)*SUPER_BLOCK_COUNT && 
-                base_alc_);
-      }
+      operator bool() const { return super_blocks_ != NULL && base_alc_; }
 
       void init() {
         if(*this) {
@@ -160,7 +157,7 @@ namespace imque {
       }
       
       static uint32_t encode_super_block_id(uint32_t id, uint32_t addr_desc) {
-        return addr_desc | (id << 24);
+        return addr_desc | (id << 24); // XXX: 上位2bitは予約済み(queueが)
       }
 
       static uint32_t decode_super_block_id(uint32_t encoded_addr_desc) {

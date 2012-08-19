@@ -1,9 +1,7 @@
 CPPFLAGS+=-Wall
 CPPFLAGS+=-Werror
 
-all: msgque-test
-
-test: allocator-test
+all: msgque-test allocator-test
 
 allocator-test:
 	mkdir -p bin
@@ -11,4 +9,4 @@ allocator-test:
 
 msgque-test:
 	mkdir -p bin
-	g++ -Iinclude ${CPPFLAGS} -O2 -o bin/msgque-test src/bin/msgque-test.cc
+	g++ -Iinclude ${CPPFLAGS} -O2 -o bin/msgque-test src/bin/msgque-test.cc -lrt
