@@ -66,12 +66,14 @@ struct Stat {
 
 long calc_average(const std::vector<long>& ary) {
   long long sum = 0;
+  long count = 0;
   for(std::size_t i=0; i < ary.size(); i++) {
     if(ary[i] != -1) {
       sum += ary[i];
+      count++;
     }
   }
-  return static_cast<long>(sum / ary.size());
+  return static_cast<long>(sum / count);
 }
 
 long calc_max(const std::vector<long>& ary) {
@@ -93,12 +95,14 @@ long calc_min(const std::vector<long>& ary) {
 long calc_standard_deviation(const std::vector<long>& ary) {
   long avg = calc_average(ary);
   long long sum = 0;
+  long count = 0;
   for(std::size_t i=1; i < ary.size(); i++) {
     if(ary[i] != -1) {
       sum += static_cast<long>(pow(ary[i] - avg, 2));
+      count++;
     }
   }
-  return static_cast<long>(sqrt(sum / ary.size()));
+  return static_cast<long>(sqrt(sum / count));
 }
 
 template<class Allocator>
