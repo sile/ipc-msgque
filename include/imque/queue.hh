@@ -28,6 +28,7 @@ namespace imque {
       }
     }
 
+    bool enqv(const void** datav, size_t* sizev, size_t count) { return impl_.enqv(datav, sizev, count); }
     bool enq(const void* data, size_t size) { return impl_.enq(data, size); }
 
     bool deq(std::string& data) { return impl_.deq(data); }

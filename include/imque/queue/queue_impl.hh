@@ -61,20 +61,29 @@ namespace imque {
         }
       }
 
-      bool enq(const void* data, size_t size) {
+      bool enqv(const void** datav, size_t* sizev, size_t count) {
         if(isFull()) {
           atomic::add(&que_->stat.overflowed_count, 1);
           return false;
         }
       
-        uint32_t alloc_id = alc_.allocate(sizeof(size_t) + size);
+        size_t total_size = 0;
+        for(size_t i=0; i < count; i++) {
+          total_size += sizev[i];
+        }
+
+        uint32_t alloc_id = alc_.allocate(sizeof(size_t) + total_size);
         if(alloc_id == 0) {
           atomic::add(&que_->stat.overflowed_count, 1);
           return false;
         }
 
-        alc_.ptr<size_t>(alloc_id)[0] = size;
-        memcpy(alc_.ptr<void>(alloc_id, sizeof(size_t)), data, size);
+        alc_.ptr<size_t>(alloc_id)[0] = total_size;
+        size_t offset = sizeof(size_t);
+        for(size_t i=0; i < count; i++) {
+          memcpy(alc_.ptr<void>(alloc_id, offset), datav[i], sizev[i]);
+          offset += sizev[i];
+        }
 
         if(enq_impl(alloc_id) == false) {
           atomic::add(&que_->stat.overflowed_count, 1);
@@ -83,6 +92,10 @@ namespace imque {
         }
       
         return true;
+      }
+
+      bool enq(const void* data, size_t size) {
+        return enqv(&data, &size, 1);
       }
 
       bool deq(std::string& buf) {
