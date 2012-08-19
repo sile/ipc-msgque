@@ -15,6 +15,7 @@
 #include <errno.h>
 #include <inttypes.h>
 #include <time.h>
+#include <signal.h>
 
 struct Parameter {
   std::string method; // "variable" | "fixed" | "malloc"
@@ -24,6 +25,7 @@ struct Parameter {
   int alloc_size_min;
   int alloc_size_max;
   int shm_size;
+  int kill_num;
 };
 
 class NanoTimer {
@@ -157,6 +159,12 @@ void parent_start(Allocator& alc, const Parameter& param) {
     }
   }
   
+  srand(time(NULL) + getpid());
+  for(int i=0; i < param.kill_num; i++) {
+    kill(children[rand() % children.size()], 9);
+    usleep(rand() % 1000);
+  }
+
   int exit_num=0;
   int signal_num=0;
   int unknown_num=0;
@@ -196,9 +204,9 @@ public:
 };
 
 int main(int argc, char** argv) {
-  if(argc != 8) {
+  if(argc != 9) {
   usage:
-    std::cerr << "Usage: allocator-test ALLOCATION_METHOD(variable|fixed|malloc) PROCESS_COUNT LOOP_COUNT MAX_HOLD_TIME(μs) ALLOC_SIZE_MIN ALLOC_SIZE_MAX SHM_SIZE" << std::endl;
+    std::cerr << "Usage: allocator-test ALLOCATION_METHOD(variable|fixed|malloc) PROCESS_COUNT LOOP_COUNT MAX_HOLD_TIME(μs) ALLOC_SIZE_MIN ALLOC_SIZE_MAX SHM_SIZE KILL_NUM" << std::endl;
     return 1;
   }
 
@@ -210,6 +218,7 @@ int main(int argc, char** argv) {
     atoi(argv[5]),
     atoi(argv[6]),
     atoi(argv[7]),
+    atoi(argv[8])
   };
 
   imque::ipc::SharedMemory shm(param.shm_size);
