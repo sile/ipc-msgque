@@ -52,7 +52,8 @@ namespace imque {
       typedef VariableAllocatorAux::NodeSnapshot NodeSnapshot;
       typedef VariableAllocatorAux::Chunk Chunk;
       
-      static const uint32_t MAX_RETRY_COUNT = 32;
+      static const int RETRY_LIMIT = 32;
+      static const int FAST_RETRY_LIMIT = 1;
       static const uint32_t NODE_COUNT_LIMIT = 0x1000000; // 24bit
 
     public:
@@ -104,42 +105,12 @@ namespace imque {
       }
 
       bool release(uint32_t descriptor) {
-        if(descriptor == 0 || descriptor >= node_count_) {
-          assert(descriptor < node_count_);
-          return true;
-        }
-
-        uint32_t node_index = descriptor;
-        NodeSnapshot pred;
-        if(find_candidate(IsPredecessor(node_index), pred) == false) {
-          return false;
-        }
-        assert(node_index >= index(pred)+pred.node().count);
-        assert(pred.node().is_avaiable());
-
-        Node* node = &nodes_[node_index];
-        Node new_pred_node = {0, pred.node().version+1, 0, Node::AVAILABLE};
-        if(node_index == index(pred) + pred.node().count) { 
-          new_pred_node.next  = pred.node().next;
-          new_pred_node.count = pred.node().count + node->count;
-        } else {
-          node->next   = pred.node().next;
-          node->status = Node::AVAILABLE;
-        
-          new_pred_node.next  = node_index;
-          new_pred_node.count = pred.node().count;
-        }
-      
-        if(pred.compare_and_swap(new_pred_node) == false) {
-          return release(descriptor);
-        }
-      
-        return true;
+        return release_impl(descriptor, RETRY_LIMIT, false);
       }
       
       // TODO: note
       bool fast_release(uint32_t descriptor) {
-        return release(descriptor);
+        return release_impl(descriptor, FAST_RETRY_LIMIT, true);
       }
 
       template<typename T>
@@ -170,14 +141,14 @@ namespace imque {
       };
       
       template<class Callback>
-      bool find_candidate(const Callback& fn, NodeSnapshot& node, uint32_t retry=0) {
+      bool find_candidate(const Callback& fn, NodeSnapshot& node, int retry=RETRY_LIMIT) {
         NodeSnapshot head(&nodes_[0]);
         return find_candidate(fn, head, node, retry);
       }
 
       template<class Callback>
-      bool find_candidate(const Callback& fn, NodeSnapshot& pred, NodeSnapshot& curr, uint32_t retry) {
-        if(retry > MAX_RETRY_COUNT) {
+      bool find_candidate(const Callback& fn, NodeSnapshot& pred, NodeSnapshot& curr, int retry) {
+        if(retry < 0) {
           return false;
         }
         
@@ -188,7 +159,7 @@ namespace imque {
         if(get_next_snapshot(pred, curr) == false ||  
            update_node_status(pred, curr) == false ||
            join_nodes_if_need(pred, curr) == false) { 
-          return find_candidate(fn, curr, retry+1);
+          return find_candidate(fn, curr, retry-1);
         }
 
         if(fn(curr)) {
@@ -250,6 +221,40 @@ namespace imque {
 
       bool is_joinable(const NodeSnapshot& node) const {
         return node.node().next == index(node) + node.node().count; 
+      }
+
+      bool release_impl(uint32_t descriptor, int retry_limit, bool fast) {
+        if(descriptor == 0 || descriptor >= node_count_) {
+          assert(descriptor < node_count_);
+          return true;
+        }
+
+        uint32_t node_index = descriptor;
+        NodeSnapshot pred;
+        if(find_candidate(IsPredecessor(node_index), pred, retry_limit) == false) {
+          return false;
+        }
+        assert(node_index >= index(pred)+pred.node().count);
+        assert(pred.node().is_avaiable());
+
+        Node* node = &nodes_[node_index];
+        Node new_pred_node = {0, pred.node().version+1, 0, Node::AVAILABLE};
+        if(node_index == index(pred) + pred.node().count) { 
+          new_pred_node.next  = pred.node().next;
+          new_pred_node.count = pred.node().count + node->count;
+        } else {
+          node->next   = pred.node().next;
+          node->status = Node::AVAILABLE;
+        
+          new_pred_node.next  = node_index;
+          new_pred_node.count = pred.node().count;
+        }
+      
+        if(pred.compare_and_swap(new_pred_node) == false) {
+          return fast ? false : release(descriptor);
+        }
+      
+        return true;
       }
 
     private:
