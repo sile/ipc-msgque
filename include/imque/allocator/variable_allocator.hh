@@ -251,7 +251,7 @@ namespace imque {
         }
       
         if(pred.compare_and_swap(new_pred_node) == false) {
-          return fast ? false : release(descriptor);
+          return fast ? false : release_impl(descriptor, retry_limit, fast);
         }
       
         return true;
