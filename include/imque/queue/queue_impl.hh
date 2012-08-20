@@ -86,8 +86,8 @@ namespace imque {
         }
 
         if(enq_impl(alloc_id) == false) {
-          atomic::add(&que_->stat.overflowed_count, 1);
           assert(alc_.release(alloc_id));
+          atomic::add(&que_->stat.overflowed_count, 1);
           return false;
         }
       
