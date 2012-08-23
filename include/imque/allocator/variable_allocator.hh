@@ -26,6 +26,14 @@ namespace imque {
         bool is_join_head() const { return status & JOIN_HEAD; }
         bool is_join_tail() const { return status & JOIN_TAIL; }
 
+        Node join(const Node& tail_node) const {
+          return (Node){tail_node.next,
+                        tail_node.version+1,
+                        count + tail_node.count,
+                        (status & ~Node::JOIN_HEAD) | (tail_node.status & ~Node::JOIN_TAIL)};
+        }
+
+        Node change_next(uint32_t new_next) const { return (Node){new_next, version+1, count, status}; }
         Node change_count(uint32_t new_count) const { return (Node){next, version+1, new_count, status}; }
         Node change_status(uint32_t new_status) const { return (Node){next, version+1, count, new_status}; }
       };
@@ -88,8 +96,10 @@ namespace imque {
         }
       
         uint32_t allocated_node_index = index(cand) + new_count;
+        nodes_[allocated_node_index].version = cand.node().version + 1;
         nodes_[allocated_node_index].count = need_chunk_count;
-
+        nodes_[allocated_node_index].status = Node::AVAILABLE;
+        
         return allocated_node_index;
       }
 
@@ -191,11 +201,7 @@ namespace imque {
         }
         assert(is_joinable(pred));
       
-        Node new_pred_node = {curr.node().next,
-                              curr.node().version+1,
-                              pred.node().count + curr.node().count,
-                              (pred.node().status & ~Node::JOIN_HEAD) |
-                              (curr.node().status & ~Node::JOIN_TAIL)};
+        Node new_pred_node = pred.node().join(curr.node());
         if(pred.compare_and_swap(new_pred_node) == false) {
           return false;
         }
@@ -227,16 +233,13 @@ namespace imque {
         assert(pred.node().is_avaiable());
 
         Node* node = &nodes_[node_index];
-        Node new_pred_node = {0, pred.node().version+1, 0, Node::AVAILABLE};
-        if(node_index == index(pred) + pred.node().count) { 
-          new_pred_node.next  = pred.node().next;
-          new_pred_node.count = pred.node().count + node->count;
+        Node new_pred_node;
+        bool is_neighbor = node_index == index(pred)+pred.node().count;
+        if(is_neighbor) {
+          new_pred_node = pred.node().change_count(pred.node().count + node->count);
         } else {
-          node->next   = pred.node().next;
-          node->status = Node::AVAILABLE;
-        
-          new_pred_node.next  = node_index;
-          new_pred_node.count = pred.node().count;
+          new_pred_node = pred.node().change_next(node_index);
+          node->next = pred.node().next;
         }
       
         if(pred.compare_and_swap(new_pred_node) == false) {
