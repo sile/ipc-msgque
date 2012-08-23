@@ -2,18 +2,16 @@
 #define IMQUE_ALLOCATOR_VARIABLE_ALLOCATOR_HH
 
 #include "../atomic/atomic.hh"
-
 #include <cassert>
-#include <cstring>
 #include <inttypes.h>
 
 namespace imque {
   namespace allocator {
     namespace VariableAllocatorAux {
       struct Node {
-        uint32_t next:26;
-        uint32_t version:6;
-        uint32_t count:30;
+        uint32_t version:6; // tag for ABA problem
+        uint32_t next:26;   // index of next Node
+        uint32_t count:30;  // avaiable Chunk count
         uint32_t status:2;
         
         enum STATUS {
@@ -22,27 +20,28 @@ namespace imque {
           JOIN_TAIL = 2
         };
         
-        bool is_avaiable() const { return status == AVAILABLE; }
-        bool is_join_head() const { return status & JOIN_HEAD; }
-        bool is_join_tail() const { return status & JOIN_TAIL; }
+        bool isAvaiable() const { return status == AVAILABLE; }
+        bool isJoinHead() const { return status & JOIN_HEAD; }
+        bool isJoinTail() const { return status & JOIN_TAIL; }
 
         Node join(const Node& tail_node) const {
-          return (Node){tail_node.next,
-                        tail_node.version+1,
+          return (Node){tail_node.version+1,
+                        tail_node.next,
                         count + tail_node.count,
                         (status & ~Node::JOIN_HEAD) | (tail_node.status & ~Node::JOIN_TAIL)};
         }
 
-        Node change_next(uint32_t new_next) const { return (Node){new_next, version+1, count, status}; }
-        Node change_count(uint32_t new_count) const { return (Node){next, version+1, new_count, status}; }
-        Node change_status(uint32_t new_status) const { return (Node){next, version+1, count, new_status}; }
+        Node changeNext(uint32_t new_next) const { return (Node){version+1, new_next, count, status}; }
+        Node changeCount(uint32_t new_count) const { return (Node){version+1, next, new_count, status}; }
+        Node changeStatus(uint32_t new_status) const { return (Node){version+1, next, count, new_status}; }
       };
 
       struct Chunk {
         char padding[32];
       };
     }
-
+    
+    // variable-size-block allocator
     class VariableAllocator {
     private:
       typedef VariableAllocatorAux::Node Node;
@@ -91,7 +90,7 @@ namespace imque {
         }
 
         uint32_t new_count = cand.node().count - need_chunk_count;
-        if(cand.compare_and_swap(cand.node().change_count(new_count)) == false) {
+        if(cand.compare_and_swap(cand.node().changeCount(new_count)) == false) {
           return allocate(size);
         }
       
@@ -123,7 +122,7 @@ namespace imque {
         IsEnoughChunk(uint32_t need_chunk_count) : count_(need_chunk_count) {}
         
         bool operator()(const NodeSnapshot& curr) const {
-          return curr.node().is_avaiable() && curr.node().count > count_;
+          return curr.node().isAvaiable() && curr.node().count > count_;
         }
         
         const uint32_t count_;
@@ -177,9 +176,9 @@ namespace imque {
           return false;
         }
         
-        assert(curr.node().is_join_head()==false || is_joinable(curr));
+        assert(curr.node().isJoinHead()==false || isJoinable(curr));
 
-        if(pred.node().is_join_head()==false && curr.node().is_join_tail()) {
+        if(pred.node().isJoinHead()==false && curr.node().isJoinTail()) {
           return false;
         }
 
@@ -187,19 +186,19 @@ namespace imque {
       }
 
       bool update_node_status(NodeSnapshot& pred, NodeSnapshot& curr) {
-        if(is_joinable(pred) == false) {
+        if(isJoinable(pred) == false) {
           return true;
         }
 
-        return (pred.compare_and_swap(pred.node().change_status(pred.node().status | Node::JOIN_HEAD)) &&
-                curr.compare_and_swap(curr.node().change_status(curr.node().status | Node::JOIN_TAIL)));
+        return (pred.compare_and_swap(pred.node().changeStatus(pred.node().status | Node::JOIN_HEAD)) &&
+                curr.compare_and_swap(curr.node().changeStatus(curr.node().status | Node::JOIN_TAIL)));
       }
     
       bool join_nodes_if_need(NodeSnapshot& pred, NodeSnapshot& curr) {
-        if(! (pred.node().is_join_head() && curr.node().is_join_tail())) {
+        if(! (pred.node().isJoinHead() && curr.node().isJoinTail())) {
           return true;
         }
-        assert(is_joinable(pred));
+        assert(isJoinable(pred));
       
         Node new_pred_node = pred.node().join(curr.node());
         if(pred.compare_and_swap(new_pred_node) == false) {
@@ -214,7 +213,7 @@ namespace imque {
         return node.place() - nodes_;
       }
 
-      bool is_joinable(const NodeSnapshot& node) const {
+      bool isJoinable(const NodeSnapshot& node) const {
         return node.node().next == index(node) + node.node().count; 
       }
 
@@ -230,15 +229,15 @@ namespace imque {
           return false;
         }
         assert(node_index >= index(pred)+pred.node().count);
-        assert(pred.node().is_avaiable());
+        assert(pred.node().isAvaiable());
 
         Node* node = &nodes_[node_index];
         Node new_pred_node;
         bool is_neighbor = node_index == index(pred)+pred.node().count;
         if(is_neighbor) {
-          new_pred_node = pred.node().change_count(pred.node().count + node->count);
+          new_pred_node = pred.node().changeCount(pred.node().count + node->count);
         } else {
-          new_pred_node = pred.node().change_next(node_index);
+          new_pred_node = pred.node().changeNext(node_index);
           node->next = pred.node().next;
         }
       
