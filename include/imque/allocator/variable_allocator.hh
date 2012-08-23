@@ -25,31 +25,20 @@ namespace imque {
         bool is_avaiable() const { return status == AVAILABLE; }
         bool is_join_head() const { return status & JOIN_HEAD; }
         bool is_join_tail() const { return status & JOIN_TAIL; }
-      }__attribute__((__packed__));
+
+        Node change_count(uint32_t new_count) const { return (Node){next, version+1, new_count, status}; }
+        Node change_status(uint32_t new_status) const { return (Node){next, version+1, count, new_status}; }
+      };
 
       struct Chunk {
         char padding[32];
-      };
-
-      class NodeSnapshot : public atomic::Snapshot<Node> {
-      public:
-        NodeSnapshot() : atomic::Snapshot<Node>() {}
-        NodeSnapshot(Node* ptr) : atomic::Snapshot<Node>(ptr) {}
-        
-        bool compare_and_swap_count(uint32_t new_count) {
-          return compare_and_swap((Node){val_.next, val_.version+1, new_count, val_.status});
-        }
-        
-        bool compare_and_swap_status(uint32_t new_status) {
-          return compare_and_swap((Node){val_.next, val_.version+1, val_.count, new_status});
-        }
       };
     }
 
     class VariableAllocator {
     private:
       typedef VariableAllocatorAux::Node Node;
-      typedef VariableAllocatorAux::NodeSnapshot NodeSnapshot;
+      typedef atomic::Snapshot<Node> NodeSnapshot;
       typedef VariableAllocatorAux::Chunk Chunk;
       
       static const int RETRY_LIMIT = 32;
@@ -94,7 +83,7 @@ namespace imque {
         }
 
         uint32_t new_count = cand.node().count - need_chunk_count;
-        if(cand.compare_and_swap_count(new_count) == false) {
+        if(cand.compare_and_swap(cand.node().change_count(new_count)) == false) {
           return allocate(size);
         }
       
@@ -192,8 +181,8 @@ namespace imque {
           return true;
         }
 
-        return (pred.compare_and_swap_status(pred.node().status | Node::JOIN_HEAD) &&
-                curr.compare_and_swap_status(curr.node().status | Node::JOIN_TAIL));
+        return (pred.compare_and_swap(pred.node().change_status(pred.node().status | Node::JOIN_HEAD)) &&
+                curr.compare_and_swap(curr.node().change_status(curr.node().status | Node::JOIN_TAIL)));
       }
     
       bool join_nodes_if_need(NodeSnapshot& pred, NodeSnapshot& curr) {
