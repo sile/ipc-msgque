@@ -14,6 +14,8 @@
 #include <math.h>
 #include <signal.h>
 
+#include <sys/time.h>
+
 struct Param {
   int reader_count;
   int reader_loop_count;
@@ -33,21 +35,40 @@ struct Param {
 class NanoTimer {
 public:
   NanoTimer() {
+#ifdef CLOCK_REALTIME
     clock_gettime(CLOCK_REALTIME, &t);
+#else
+    gettimeofday(&t, NULL);
+#endif
   }
 
   long elapsed() {
+#ifdef CLOCK_REALTIME
     timespec now;
     clock_gettime(CLOCK_REALTIME, &now);
+#else
+    timeval now;
+    gettimeofday(&now, NULL);
+#endif
     return ns(now) - ns(t);
   }
 
+#ifdef CLOCK_REALTIME
   long ns(const timespec& ts) {
     return static_cast<long>(static_cast<long long>(ts.tv_sec)*1000*1000*1000 + ts.tv_nsec);
   }
+#else
+  long ns(const timeval& ts) {
+    return static_cast<long>(static_cast<long long>(ts.tv_sec)*1000*1000*1000 + ts.tv_usec*1000);
+  }
+#endif
 
 private:
+#ifdef CLOCK_REALTIME
   timespec t;
+#else
+  timeval t;
+#endif
 };
 
 struct Stat {
