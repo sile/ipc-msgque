@@ -50,6 +50,9 @@ namespace imque {
 
     // キューに満杯なら true を返す
     bool isFull()  const { return impl_.isFull(); }
+
+    // 要素数を取得する
+    size_t entryCount() const { return impl_.entryCount(); }
     
     // キューへの要素追加に失敗した回数を返す
     size_t overflowedCount() const { return impl_.overflowedCount(); }

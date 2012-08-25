@@ -122,6 +122,15 @@ namespace imque {
 
       bool isEmpty() const { return que_->read_pos == que_->write_pos; }
       bool isFull()  const { return que_->read_pos == (que_->write_pos+1) % que_->entry_count; }
+      size_t entryCount() const { 
+        uint32_t curr_read  = que_->read_pos;
+        uint32_t curr_write = que_->write_pos;
+        if(curr_write >= curr_read) {
+          return curr_write - curr_read;
+        } else {
+          return curr_write + (que_->entry_count - curr_read);
+        }
+      }
 
       // キューへの要素追加に失敗した回数を返す
       size_t overflowedCount() const { return que_->stat.overflowed_count; }
