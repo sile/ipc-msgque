@@ -16,7 +16,8 @@
 * 詳細はCOPYINGファイルを参照
 
 ## 使用方法
-* "include/imque/queue.hh" をインクルードする
+1. "include/imque/" をインクルードパスが通っているディレクトリにコピー
+2. <imque/queue.hh> をインクルード
 
 ## API
 
