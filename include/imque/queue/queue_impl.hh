@@ -100,8 +100,7 @@ namespace imque {
         return true;
       }
 
-      // キューから要素を取り出し buf に格納する 
-      // キューが空の場合は false を返す
+      // キューから要素を取り出し buf に格納する (キューが空の場合は false を返す)
       bool deq(std::string& buf) {
         if(isEmpty()) {
           return false;
