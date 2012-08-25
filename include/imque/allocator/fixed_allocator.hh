@@ -39,9 +39,6 @@ namespace imque {
       static const uint32_t SUPER_BLOCKS_SIZE = sizeof(SuperBlock)*SUPER_BLOCK_COUNT;
       
     public:
-      typedef uint32_t DESCRIPTOR_TYPE;
-
-    public:
       FixedAllocator(void* region, uint32_t size) 
         : super_blocks_(reinterpret_cast<SuperBlock*>(region)),
           base_alc_(super_blocks_+SUPER_BLOCK_COUNT, 
@@ -120,7 +117,7 @@ namespace imque {
 
         SuperBlock& sb = super_blocks_[sb_id-1];
         if(sb.used_count < sb.free_count &&
-           base_alc_.fast_release(base_addr_desc)) {
+           base_alc_.fastRelease(base_addr_desc)) {
           atomic::sub(&sb.used_count, 1);
           return true;
         }

@@ -125,6 +125,37 @@ long calc_standard_deviation(const std::vector<long>& ary) {
   return static_cast<long>(sqrt(sum / count));
 }
 
+class MallocAllocator {
+public:
+  void* allocate(uint32_t size) {
+    return malloc(size);
+  }
+
+  bool release(void* descriptor) {
+    free(descriptor);
+    return true;
+  }
+
+  template<typename T>
+  T* ptr(void* descriptor) { return reinterpret_cast<T*>(descriptor); }
+};
+
+template<typename T>
+struct Descriptor {};
+template<>
+struct Descriptor<imque::allocator::VariableAllocator> {
+  typedef uint32_t TYPE;
+};
+template<>
+struct Descriptor<imque::allocator::FixedAllocator> {
+  typedef uint32_t TYPE;
+};
+template<>
+struct Descriptor<MallocAllocator> {
+  typedef void* TYPE;
+};
+
+
 template<class Allocator>
 void child_start(Allocator& alc, const Parameter& param) {
   srand(time(NULL) + getpid());
@@ -135,7 +166,8 @@ void child_start(Allocator& alc, const Parameter& param) {
     uint32_t size = static_cast<uint32_t>((rand() % size_range) + param.alloc_size_min);
 
     NanoTimer t1;
-    typename Allocator::DESCRIPTOR_TYPE md = alc.allocate(size);
+    //typename Allocator::DESCRIPTOR_TYPE md = alc.allocate(size);
+    typename Descriptor<Allocator>::TYPE md = alc.allocate(size);
     st.allocate_times[i] = t1.elapsed();
     st.allocate_ok_count += md==0 ? 0 : 1;
     
@@ -210,22 +242,6 @@ void parent_start(Allocator& alc, const Parameter& param) {
             << "unknown=" << unknown_num << std::endl;
 }
 
-class MallocAllocator {
-public:
-  typedef void* DESCRIPTOR_TYPE;
-
-  DESCRIPTOR_TYPE allocate(uint32_t size) {
-    return malloc(size);
-  }
-
-  bool release(DESCRIPTOR_TYPE descriptor) {
-    free(descriptor);
-    return true;
-  }
-
-  template<typename T>
-  T* ptr(DESCRIPTOR_TYPE descriptor) { return reinterpret_cast<T*>(descriptor); }
-};
 
 int main(int argc, char** argv) {
   if(argc != 9) {
