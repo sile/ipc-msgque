@@ -1,11 +1,13 @@
 #ifndef IMQUE_ATOMIC_ATOMIC
 #define IMQUE_ATOMIC_ATOMIC
 
+#include <string.h>
 #include <inttypes.h>
 
 namespace imque {
   namespace atomic {
     namespace {
+      // From から To へと型変換を行う
       template<typename From, typename To>
       To union_conv(From v) {
         union {
@@ -17,24 +19,21 @@ namespace imque {
         return u.to;
       }
       
+      // ポインタ用
       template<typename From, typename To>
-      To* union_conv(From* v) {
-        return reinterpret_cast<To*>(v);
-      }
+      To* union_conv(From* v) { return reinterpret_cast<To*>(v); }
 
+      // volatileポインタ用
       template<typename From, typename To>
-      volatile To* union_conv(volatile From* v) {
-        return reinterpret_cast<volatile To*>(v);
-      }
+      volatile To* union_conv(volatile From* v) { return reinterpret_cast<volatile To*>(v); }
 
+      // From == To 用
       template<typename T>
-      T union_conv(T v) {
-        return v;
-      }
+      T union_conv(T v) { return v; }
 
-      template<int SIZE>
-      struct SizeToType { typedef uint8_t TYPE; }; // XXX:
       
+      // 型のサイズに対応する uintXXX_t 型にマッピングする
+      template<int SIZE> struct SizeToType {};
       template<> struct SizeToType<1> { typedef uint8_t TYPE; };
       template<> struct SizeToType<2> { typedef uint16_t TYPE; };
       template<> struct SizeToType<4> { typedef uint32_t TYPE; };
@@ -48,13 +47,8 @@ namespace imque {
                                           union_conv<T2, uint>(old_value), 
                                           union_conv<T2, uint>(new_value));
     }
-
-    template<typename T>
-    T add_and_fetch(T* place, int delta) {
-      typedef typename SizeToType<sizeof(T)>::TYPE uint;
-      return union_conv<uint, T>(__sync_add_and_fetch(union_conv<T, uint>(place), delta));
-    }
-
+    
+    // 各種アトミック命令
     template<typename T>
     T fetch_and_add(T* place, int delta) {
       typedef typename SizeToType<sizeof(T)>::TYPE uint;
@@ -75,9 +69,10 @@ namespace imque {
 
     template<typename T>
     T fetch(T* place) {
-      return add_and_fetch(place, 0);
+      return fetch_and_add(place, 0);
     }
 
+    // スナップショットクラス
     template<typename T>
     class Snapshot {
     public:

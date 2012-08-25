@@ -2,7 +2,6 @@
 #define IMQUE_IPC_SHARED_MEMORY_HH
 
 #include <string>
-
 #include <sys/mman.h>
 #include <sys/types.h>
 #include <sys/stat.h>

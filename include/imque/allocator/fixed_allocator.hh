@@ -138,7 +138,7 @@ namespace imque {
           return true;
         }
         
-        // キャッシュが不足している か 高競合下によりブロック解放に失敗した場合は、キャッシュに追加する
+        // キャッシュが不足しているか、高競合下によりブロック解放に失敗した場合は、キャッシュに追加する
         for(;;) {
           HeadBlock head = atomic::fetch(&sb.head);
           HeadBlock new_head = {head.version+1, base_md};
