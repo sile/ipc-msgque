@@ -17,7 +17,7 @@
 
 ## 使用方法
 1. "include/imque/" をインクルードパスが通っているディレクトリにコピー
-2. <imque/queue.hh> をインクルード
+2. ```#include <imque/queue.hh>``` でインクルード
 
 ## API
 
