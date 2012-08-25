@@ -2,9 +2,18 @@
 * FIFOキュー
 * ロックフリー
 * マルチプロセス間の通信(IPC)に使用可能
+* ヘッダライブラリ
 
 ## バージョン
 * 0.0.2
+
+## 対応環境
+* gccのver4.1以上
+* POSIX準拠のOS
+
+## ライセンス
+* MITライセンス
+* 詳細はCOPYINGファイルを参照
 
 ## 使用方法
 * "include/imque/queue.hh" をインクルードする
@@ -71,3 +80,40 @@ namespace imque {
 ```
 
 ## 使用例
+```C++
+#include <imque/queue.hh>
+#include <unistd.h>    // fork, getpid
+#include <sys/types.h>
+#include <stdio.h>     // sprintf
+#include <string.h>    // strlen
+#include <iostream>
+#include <string>
+
+int main(int argc, char** argv) {
+  imque::Queue que(32, 4096);
+  if(! que) {
+    return 1;
+  }
+
+  que.init(); 
+  
+  for(int i=0; i < 10; i++) {
+    if(fork() == 0) {
+      // child process
+      char buf[1024]; 
+      sprintf(buf, "Hello: %d", getpid());
+      que.enq(buf, strlen(buf));
+      return 0;
+    }
+  }
+
+  // parent process
+  for(int i=0; i < 10; i++) {
+    std::string buf;
+    while(que.deq(buf) == false);
+    std::cout << "receive# " << buf << std::endl;
+  }
+
+  return 0;
+}
+```
