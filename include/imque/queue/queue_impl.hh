@@ -4,12 +4,12 @@
 #include "../atomic/atomic.hh"
 #include "../ipc/shared_memory.hh"
 #include "../allocator/fixed_allocator.hh"
-
 #include <inttypes.h>
 #include <string.h>
 
 namespace imque {
   namespace queue {
+    // FIFOキュー
     class QueueImpl {
       struct Entry {
         uint32_t state:2;
@@ -19,29 +19,26 @@ namespace imque {
           FREE = 0,
           USED = 1
         };
-      }__attribute__((__packed__));
+      };
 
       struct Stat {
         uint32_t overflowed_count;
       };
 
       struct Header {
-        volatile uint32_t version; // XXX: name
+        volatile uint32_t version; // tag for ABA problem
         volatile uint32_t read_pos;
         volatile uint32_t write_pos;
         Stat stat;
         uint32_t entry_count;
         Entry entries[0];
-      
-        uint32_t next_read_pos() const { return (read_pos+1)%entry_count; }
-        uint32_t next_write_pos() const { return (write_pos+1)%entry_count; }
       };
 
     public:
       QueueImpl(size_t entry_count, ipc::SharedMemory& shm)
         : que_(shm.ptr<Header>()),
-          alc_(shm.ptr<void>(que_size(entry_count)),
-               shm.size() > que_size(entry_count) ?  shm.size() - que_size(entry_count) : 0) {
+          alc_(shm.ptr<void>(queSize(entry_count)),
+               shm.size() > queSize(entry_count) ?  shm.size() - queSize(entry_count) : 0) {
         if(shm) {
           que_->entry_count = entry_count;
         }
@@ -49,6 +46,8 @@ namespace imque {
 
       operator bool() const { return que_ != NULL && alc_; }
     
+      // 初期化メソッド。
+      // コンストラクタに渡した一つの shm につき、一回呼び出す必要がある。
       void init() {
         if(*this) {
           alc_.init();
@@ -61,6 +60,13 @@ namespace imque {
         }
       }
 
+      // キューに要素を追加する (キューに空きがない場合は false を返す)
+      bool enq(const void* data, size_t size) {
+        return enqv(&data, &size, 1);
+      }
+
+      // キューに要素を追加する (キューに空きがない場合は false を返す)
+      // datav および sizev は count 分のサイズを持ち、それらを全て結合したデータがキューには追加される
       bool enqv(const void** datav, size_t* sizev, size_t count) {
         if(isFull()) {
           atomic::add(&que_->stat.overflowed_count, 1);
@@ -85,7 +91,7 @@ namespace imque {
           offset += sizev[i];
         }
 
-        if(enq_impl(alloc_id) == false) {
+        if(enqImpl(alloc_id) == false) {
           assert(alc_.release(alloc_id));
           atomic::add(&que_->stat.overflowed_count, 1);
           return false;
@@ -94,16 +100,14 @@ namespace imque {
         return true;
       }
 
-      bool enq(const void* data, size_t size) {
-        return enqv(&data, &size, 1);
-      }
-
+      // キューから要素を取り出し buf に格納する 
+      // キューが空の場合は false を返す
       bool deq(std::string& buf) {
         if(isEmpty()) {
           return false;
         }
 
-        uint32_t alloc_id = deq_impl();
+        uint32_t alloc_id = deqImpl();
         if(alloc_id == 0) {
           return false;
         }
@@ -118,13 +122,14 @@ namespace imque {
       }
 
       bool isEmpty() const { return que_->read_pos == que_->write_pos; }
-      bool isFull()  const { return que_->read_pos == que_->next_write_pos(); }
+      bool isFull()  const { return que_->read_pos == (que_->write_pos+1) % que_->entry_count; }
 
+      // キューへの要素追加に失敗した回数を返す
       size_t overflowedCount() const { return que_->stat.overflowed_count; }
       void resetOverflowedCount() { que_->stat.overflowed_count = 0; }
 
     private:
-      bool enq_impl(uint32_t value) {
+      bool enqImpl(uint32_t value) {
         uint32_t curr_read  = que_->read_pos;
         uint32_t curr_write = que_->write_pos;
         uint32_t next_write = (curr_write+1) % que_->entry_count;
@@ -138,19 +143,19 @@ namespace imque {
         Entry  e = *pe;
         if(e.state != Entry::FREE) {
           atomic::compare_and_swap(&que_->write_pos, curr_write, next_write);
-          return enq_impl(value);
+          return enqImpl(value);
         }
 
         Entry new_e = {Entry::USED, value};
         if(atomic::compare_and_swap(pe, e, new_e) == false) {
-          return enq_impl(value);
+          return enqImpl(value);
         }
       
         atomic::compare_and_swap(&que_->write_pos, curr_write, next_write);      
         return true;
       }
 
-      uint32_t deq_impl() {
+      uint32_t deqImpl() {
         uint32_t curr_read  = que_->read_pos;
         uint32_t curr_write = que_->write_pos;
         uint32_t next_read = (curr_read+1) % que_->entry_count;
@@ -163,20 +168,20 @@ namespace imque {
         Entry   e = *pe;
         if(e.state == Entry::FREE) {
           atomic::compare_and_swap(&que_->read_pos, curr_read, next_read);
-          return deq_impl();
+          return deqImpl();
         }
 
         uint32_t new_version = atomic::fetch_and_add(&que_->version, 1);
         Entry new_e = {Entry::FREE, new_version};
         if(atomic::compare_and_swap(pe, e, new_e) == false) {
-          return deq_impl();
+          return deqImpl();
         }
       
         atomic::compare_and_swap(&que_->read_pos, curr_read, next_read);
         return e.value;
       }
 
-      static size_t que_size(size_t entry_count) {
+      static size_t queSize(size_t entry_count) {
         return sizeof(Header) + sizeof(Entry)*entry_count;
       }
 
