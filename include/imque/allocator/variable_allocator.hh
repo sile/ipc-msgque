@@ -42,9 +42,8 @@ namespace imque {
     }
     
     // ロックフリーな可変長ブロックアロケータ。
-    // 一つのインスタンスで扱えるメモリ領域の最大長は sizeof(Chunk)*NODE_COUNT_LIMIT = 512MB
+    // 一つのインスタンスで(実際に)割当可能なメモリ領域の最大長は sizeof(Chunk)*NODE_COUNT_LIMIT = 512MB
     class VariableAllocator {
-    private:
       typedef VariableAllocatorAux::Node Node;
       typedef atomic::Snapshot<Node> NodeSnapshot;
       typedef VariableAllocatorAux::Chunk Chunk;
@@ -54,6 +53,8 @@ namespace imque {
       static const uint32_t NODE_COUNT_LIMIT = 0x1000000; // 24bit
 
     public:
+      // region: 割当に使用するメモリ領域。
+      // size: regionのサイズ。メモリ領域の内の sizeof(Node)/sizeof(Chunk) は管理用に利用される。
       VariableAllocator(void* region, uint32_t size)
         : node_count_(size/(sizeof(Node)+sizeof(Chunk))),
           nodes_(reinterpret_cast<Node*>(region)),
@@ -106,7 +107,7 @@ namespace imque {
         return allocated_node_index; 
       }
 
-      // allocateメソッドで割り当てたメモリ領域を解放する。
+      // allocateメソッドで割り当てたメモリ領域を解放する。(解放に成功した場合は trueを、失敗した場合は false を返す)
       // md(メモリ記述子)が 0 の場合は何も行わない。
       //
       // メモリ解放は、極めて高い競合下で楽観的ロックの試行回数(RETRY_LIMIT)を越えた場合に失敗することがある。
