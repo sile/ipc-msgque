@@ -15,7 +15,7 @@ namespace imque {
     // shm_size は共有メモリ領域のサイズ
     Queue(size_t entry_count, size_t shm_size)
       : shm_(shm_size),
-        impl_(entry_count, shm_) {
+        impl_(entry_count+1, shm_) {
     }
       
     // 複数プロセス間で共有可能なキューを作成する
@@ -23,7 +23,7 @@ namespace imque {
     // filepath は共有メモリのマッピングに使用するファイルのパス
     Queue(size_t entry_count, size_t shm_size, const std::string& filepath, mode_t mode=0660)
       : shm_(filepath, shm_size, mode),
-        impl_(entry_count, shm_) {
+        impl_(entry_count+1, shm_) {
     }
 
     operator bool() const { return shm_ && impl_; }

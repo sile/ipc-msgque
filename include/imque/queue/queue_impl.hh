@@ -30,17 +30,17 @@ namespace imque {
         volatile uint32_t read_pos;
         volatile uint32_t write_pos;
         Stat stat;
-        uint32_t entry_count;
+        uint32_t entry_limit;
         Entry entries[0];
       };
 
     public:
-      QueueImpl(size_t entry_count, ipc::SharedMemory& shm)
+      QueueImpl(size_t entry_limit, ipc::SharedMemory& shm)
         : que_(shm.ptr<Header>()),
-          alc_(shm.ptr<void>(queSize(entry_count)),
-               shm.size() > queSize(entry_count) ?  shm.size() - queSize(entry_count) : 0) {
+          alc_(shm.ptr<void>(queSize(entry_limit)),
+               shm.size() > queSize(entry_limit) ?  shm.size() - queSize(entry_limit) : 0) {
         if(shm) {
-          que_->entry_count = entry_count;
+          que_->entry_limit = entry_limit;
         }
       }
 
@@ -56,7 +56,7 @@ namespace imque {
           que_->read_pos  = 0;
           que_->write_pos = 0;
           que_->stat.overflowed_count = 0;
-          memset(que_->entries, 0, sizeof(Entry)*que_->entry_count);
+          memset(que_->entries, 0, sizeof(Entry)*que_->entry_limit);
         }
       }
 
@@ -121,14 +121,14 @@ namespace imque {
       }
 
       bool isEmpty() const { return que_->read_pos == que_->write_pos; }
-      bool isFull()  const { return que_->read_pos == (que_->write_pos+1) % que_->entry_count; }
+      bool isFull()  const { return que_->read_pos == (que_->write_pos+1) % que_->entry_limit; }
       size_t entryCount() const { 
         uint32_t curr_read  = que_->read_pos;
         uint32_t curr_write = que_->write_pos;
         if(curr_write >= curr_read) {
           return curr_write - curr_read;
         } else {
-          return curr_write + (que_->entry_count - curr_read);
+          return curr_write + (que_->entry_limit - curr_read);
         }
       }
 
@@ -140,7 +140,7 @@ namespace imque {
       bool enqImpl(uint32_t value) {
         uint32_t curr_read  = que_->read_pos;
         uint32_t curr_write = que_->write_pos;
-        uint32_t next_write = (curr_write+1) % que_->entry_count;
+        uint32_t next_write = (curr_write+1) % que_->entry_limit;
       
         if(curr_read == next_write) {
           atomic::add(&que_->stat.overflowed_count, 1);
@@ -166,7 +166,7 @@ namespace imque {
       uint32_t deqImpl() {
         uint32_t curr_read  = que_->read_pos;
         uint32_t curr_write = que_->write_pos;
-        uint32_t next_read = (curr_read+1) % que_->entry_count;
+        uint32_t next_read = (curr_read+1) % que_->entry_limit;
       
         if(curr_read == curr_write) {
           return 0;
@@ -189,8 +189,8 @@ namespace imque {
         return e.value;
       }
 
-      static size_t queSize(size_t entry_count) {
-        return sizeof(Header) + sizeof(Entry)*entry_count;
+      static size_t queSize(size_t entry_limit) {
+        return sizeof(Header) + sizeof(Entry)*entry_limit;
       }
 
     private:
