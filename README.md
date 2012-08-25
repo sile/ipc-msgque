@@ -115,7 +115,7 @@ int main(int argc, char** argv) {
 /**
  * filename: msgque.cc
  */
-#include "include/imque/queue.hh"
+#include <imque/queue.hh>
 #include <unistd.h>    // getpid
 #include <sys/types.h>
 #include <stdio.h>     // sprintf
