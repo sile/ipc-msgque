@@ -5,7 +5,7 @@
 * ヘッダライブラリ
 
 ## バージョン
-* 0.0.2
+* 0.0.3
 
 ## 対応環境
 * gccのver4.1以上
@@ -65,6 +65,9 @@ namespace imque {
 
     // キューに満杯なら true を返す
     bool isFull()  const { return impl_.isFull(); }
+
+    // 要素数を取得する
+    size_t entryCount() const { return impl_.entryCount(); }
     
     // キューへの要素追加に失敗した回数を返す
     size_t overflowedCount() const { return impl_.overflowedCount(); }
@@ -79,7 +82,7 @@ namespace imque {
 }
 ```
 
-## 使用例
+## 使用例(1)# 親子プロセスでキューを共有する場合
 ```C++
 #include <imque/queue.hh>
 #include <unistd.h>    // fork, getpid
@@ -113,6 +116,66 @@ int main(int argc, char** argv) {
     while(que.deq(buf) == false);
     std::cout << "receive# " << buf << std::endl;
   }
+
+  return 0;
+}
+```
+
+## 使用例(2)# 独立したプロセス間でキューを共有する場合
+```C++
+/**
+ * filename: msgque.cc
+ */
+#include "include/imque/queue.hh"
+#include <unistd.h>    // getpid
+#include <sys/types.h>
+#include <stdio.h>     // sprintf
+#include <string.h>    // strlen
+#include <iostream>
+#include <string>
+
+#define SHM_FILE_PATH "/tmp/msgque.shm"
+#define SHM_SIZE 4096
+#define QUEUE_ENTRY_COUNT 8
+
+int main(int argc, char** argv) {
+  if(argc != 2) {
+  usage:
+    std::cerr << "Usage: msgque init|enq|deq" << std::endl;
+    return 1;
+  }
+
+  imque::Queue que(QUEUE_ENTRY_COUNT, SHM_SIZE, SHM_FILE_PATH);
+  if(! que) {
+    std::cerr << "queue initialization failed" << std::endl;
+    return 1;
+  }
+
+  std::string cmd=argv[1];
+  if(cmd == "init") {
+    std::cout << "# init: " << SHM_FILE_PATH << std::endl;
+    que.init();
+  } else if(cmd == "enq") {
+    char buf[1024];
+    sprintf(buf, "Hello: %d", getpid());
+    
+    if(que.enq(buf, strlen(buf))) {
+      std::cout << "# enqueue: " << buf << std::endl;
+    } else {
+      std::cout << "# queue is full" << std::endl;
+    }
+  } else if(cmd == "deq") {
+    std::string buf;
+    if(que.deq(buf)) {
+      std::cout << "# dequeue: " << buf << std::endl;
+    }  else {
+      std::cout << "# queue is empty" << std::endl;
+    }
+  } else {
+    goto usage;
+  }
+  
+  std::cout << "# entry count: " << que.entryCount() << std::endl;
 
   return 0;
 }
