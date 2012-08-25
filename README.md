@@ -5,7 +5,7 @@
 * C++ヘッダライブラリ
 
 ## バージョン
-* 0.0.3
+* 0.0.4
 
 ## 対応環境
 * gccのver4.1以上
@@ -31,16 +31,18 @@ namespace imque {
     // shm_size は共有メモリ領域のサイズ
     Queue(size_t entry_count, size_t shm_size);
       
-    // 複数プロセス間で共有可能なキューを作成する
+    // 複数プロセス間で共有可能なキューを作成する 
     // shm_size は共有メモリ領域のサイズ
     // filepath は共有メモリのマッピングに使用するファイルのパス
+    // ※ インスタンス作成後に、必ず一度は initメソッド を呼び出す必要がある
     Queue(size_t entry_count, size_t shm_size, const std::string& filepath, mode_t mode=0660);
 
     // キューが有効なら true, 無効なら false を返す
-    // ※ init メソッド呼び出し前に、有効性チェックを行う必要がある
     operator bool() const;
 
-    // 初期化メソッド。一つの共有キューにつき、一度呼び出す必要がある。
+    // 初期化メソッド。
+    // 一つの共有キューにつき、一度呼び出す必要がある。
+    // ※ 親子プロセスで共有可能なキューの場合は、クライアント側での呼び出しは省略可能
     void init();
 
     // キューに要素を追加する (キューに空きがない場合は false を返す)
@@ -86,8 +88,6 @@ int main(int argc, char** argv) {
   if(! que) {
     return 1;
   }
-
-  que.init(); 
   
   for(int i=0; i < 10; i++) {
     if(fork() == 0) {
