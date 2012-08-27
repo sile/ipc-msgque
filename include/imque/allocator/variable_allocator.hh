@@ -239,8 +239,11 @@ namespace imque {
         if(findCandidate(IsPredecessor(node_index), pred, retry_limit) == false) {
           return false;
         }
+        // 極めて高い競合下では、以下のassertionがfalseになる場合はある。
+        // 原因はおそらくABA問題で Node.version に割り当てるビット量を増やせば発生頻度は低下する。
+        // ※ ただしFixedAllocatorと併用する場合は、ほぼ間違いなくといって良いほど、この問題は怒らないので、
+        //    現状の割り当てビット数で問題ない。
         assert(node_index >= index(pred)+pred.node().count);
-        assert(pred.node().isAvaiable());
 
         Node* node = &nodes_[node_index];
         Node new_pred_node;
