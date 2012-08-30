@@ -4,6 +4,7 @@
   * 再入可能 かつ SIGKILLに対して安全
 * マルチプロセス間の通信(IPC)に使用可能
 * C++ヘッダライブラリ
+* プロジェクトページ: https://github.com/sile/ipc-msgque
 
 ## バージョン
 * 0.0.4
