@@ -11,7 +11,7 @@ namespace imque {
   // マルチプロセス間で使用可能
   class Queue {
   public:
-    // 親子プロセス間で共有可能なキューを作成する
+    // 親子プロセス間で共有可能な無名キューを作成する
     // shm_size は共有メモリ領域のサイズ
     Queue(size_t entry_count, size_t shm_size)
       : shm_(shm_size),
@@ -19,20 +19,21 @@ namespace imque {
       init();
     }
       
-    // 複数プロセス間で共有可能なキューを作成する
+    // 複数プロセス間で共有可能な名前付きキューを作成する
     // shm_size は共有メモリ領域のサイズ
     // filepath は共有メモリのマッピングに使用するファイルのパス
-    // ※ インスタンス作成後に、必ず一度は initメソッド を呼び出す必要がある
     Queue(size_t entry_count, size_t shm_size, const std::string& filepath, mode_t mode=0660)
       : shm_(filepath, shm_size, mode),
         impl_(entry_count+1, shm_) {
+      if(*this) {
+        impl_.init_once();
+      }
     }
 
     operator bool() const { return shm_ && impl_; }
 
     // 初期化メソッド。
-    // 一つの共有キューにつき、一度呼び出す必要がある。
-    // ※ 親子プロセスで共有可能なキューの場合は、クライアント側での呼び出しは省略可能
+    // キューを空に戻したい場合や、名前付きキュー用のファイルを使い回して明示的に初期化したい場合などに使用する。
     void init() {
       if(*this) {
         impl_.init();

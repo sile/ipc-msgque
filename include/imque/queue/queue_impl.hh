@@ -9,6 +9,8 @@
 
 namespace imque {
   namespace queue {
+    static const char MAGIC[] = "IMQUE-0.0.5";
+
     // FIFOキュー
     class QueueImpl {
       struct Entry {
@@ -26,22 +28,25 @@ namespace imque {
       };
 
       struct Header {
+        char magic[sizeof(MAGIC)];
+        uint32_t shm_size;
+        uint32_t entry_limit;
+
         volatile uint32_t version; // tag for ABA problem
         volatile uint32_t read_pos;
         volatile uint32_t write_pos;
         Stat stat;
-        uint32_t entry_limit;
+
         Entry entries[0];
       };
 
     public:
       QueueImpl(size_t entry_limit, ipc::SharedMemory& shm)
-        : que_(shm.ptr<Header>()),
+        : shm_size_(shm.size()),
+          entry_limit_(entry_limit),
+          que_(shm.ptr<Header>()),
           alc_(shm.ptr<void>(queSize(entry_limit)),
                shm.size() > queSize(entry_limit) ?  shm.size() - queSize(entry_limit) : 0) {
-        if(shm) {
-          que_->entry_limit = entry_limit;
-        }
       }
 
       operator bool() const { return que_ != NULL && alc_; }
@@ -52,11 +57,26 @@ namespace imque {
         if(*this) {
           alc_.init();
       
+          memcpy(que_->magic, MAGIC, sizeof(MAGIC));
+          que_->shm_size = shm_size_;
+          que_->entry_limit = entry_limit_;
+          
           que_->version = 0;
           que_->read_pos  = 0;
           que_->write_pos = 0;
           que_->stat.overflowed_count = 0;
+
           memset(que_->entries, 0, sizeof(Entry)*que_->entry_limit);
+        }
+      }
+
+      // 重複初期化チェック(簡易)付きの初期化メソッド。
+      // 共有メモリ用のファイルを使い回している場合は、二回目以降は明示的なinit()呼び出しを行った方が安全。
+      void init_once() {
+        if(*this && (memcmp(que_->magic, MAGIC, sizeof(MAGIC)) != 0 || 
+                     shm_size_ != que_->shm_size ||
+                     entry_limit_ != que_->entry_limit)) {
+          init();
         }
       }
 
@@ -194,6 +214,9 @@ namespace imque {
       }
 
     private:
+      const uint32_t shm_size_;    // for check
+      const uint32_t entry_limit_; // for check
+
       Header* que_;
       allocator::FixedAllocator alc_;
     };
