@@ -77,7 +77,7 @@ namespace imque {
     class Snapshot {
     public:
       Snapshot() : ptr_(NULL) {}
-      Snapshot(T* ptr) { update(ptr); }
+      Snapshot(T* ptr) : ptr_(ptr), val_(atomic::fetch(ptr)) {}
       
       void update(T* ptr) {
         ptr_ = ptr;
