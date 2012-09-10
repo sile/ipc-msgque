@@ -183,9 +183,9 @@ namespace imque {
         return id;
       }
       
-      static uint32_t encodeSuperBlockId(uint32_t id, uint32_t md) { return md | (id << 24);  }
-      static uint32_t decodeSuperBlockId(uint32_t encoded_md)      { return encoded_md >> 24; } 
-      static uint32_t decodeBaseMemoryDesc(uint32_t encoded_md)    { return encoded_md & 0xFFFFFF; }
+      static uint32_t encodeSuperBlockId(uint32_t id, uint32_t md) { return md | (id << 28);  }
+      static uint32_t decodeSuperBlockId(uint32_t encoded_md)      { return encoded_md >> 28; } 
+      static uint32_t decodeBaseMemoryDesc(uint32_t encoded_md)    { return encoded_md & 0xFFFFFFF; }
 
     private:
       SuperBlock* super_blocks_;

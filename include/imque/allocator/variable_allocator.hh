@@ -42,6 +42,18 @@ namespace imque {
       };
     }
     
+    struct Tmp {
+      Tmp(uint32_t v) : version(v >> 22), next(v & 0x3FFFFF) {
+      }
+
+      static uint32_t encode(uint32_t version, uint32_t next) {
+        return (version << 22) + next;
+      }
+
+      uint32_t version:6;
+      uint32_t next:22;
+    };
+    
     // ロックフリーな可変長ブロックアロケータ。
     // 一つのインスタンスで(実際に)割当可能なメモリ領域の最大長は sizeof(Chunk)*NODE_COUNT_LIMIT = 512MB
     class VariableAllocator {
@@ -107,10 +119,12 @@ namespace imque {
         nodes_[allocated_node_index] = cand.node().changeCount(need_chunk_count);
         nodes_[allocated_node_index].next = 1; // XXX: 参照カウント実験
         nodes_[allocated_node_index].status = Node::ALLOCATED;
-        return allocated_node_index; 
+        return Tmp::encode(nodes_[allocated_node_index].version, allocated_node_index);
       }
 
       bool refincr(uint32_t md, bool any=false) {
+        md = Tmp(md).next;
+
         for(;;) {
           NodeSnapshot snap(nodes_ + md);
           if(snap.node().status != Node::ALLOCATED) { // XXX: これだけでは一周してしまっているケースを検出できない
@@ -155,6 +169,7 @@ namespace imque {
       //
       // メモリ解放は、極めて高い競合下で楽観的ロックの試行回数(RETRY_LIMIT)を越えた場合に失敗することがある。
       bool release(uint32_t md) {
+        md = Tmp(md).next;
         //std::cout << "@ in release" << std::endl;
         if(refdecr(md) == false) {
           return true;
@@ -170,6 +185,7 @@ namespace imque {
       
       // 楽観的ロック失敗時の試行回数が少ない以外は releaseメソッド と同様。
       bool fastRelease(uint32_t md) {
+        md = Tmp(md).next;
         if(refdecr(md) == false) {
           return true;
         }
@@ -183,7 +199,7 @@ namespace imque {
 
       // allocateメソッドが返したメモリ記述子から、対応する実際にメモリ領域を取得する
       template<typename T>
-      T* ptr(uint32_t md) const { return reinterpret_cast<T*>(chunks_ + md); }
+      T* ptr(uint32_t md) const { return reinterpret_cast<T*>(chunks_ + Tmp(md).next); }
 
       template<typename T>
       T* ptr(uint32_t md, uint32_t offset) const { return reinterpret_cast<T*>(ptr<char>(md)+offset); }
