@@ -169,8 +169,7 @@ namespace imque {
 
     private:
       bool enqImpl(uint32_t new_tail) {
-        alc_.dup(new_tail); // headへの追加用: XXX: 場所
-        alc_.dup(new_tail); // tailへの追加用
+        assert(alc_.dup(new_tail, 2)); // headへの追加用: XXX: 場所
 
         for(;;) {
           RefPtr tail(que_->tail, alc_);
@@ -189,11 +188,6 @@ namespace imque {
           }
 
           if(atomic::compare_and_swap(&tail.ptr()->next, node.next, new_tail)) {
-            /*
-            if(atomic::compare_and_swap(&que_->tail, tail.md(), new_tail)) {
-              alc_.release(tail.md());
-            } 
-            */
             return true;
           }
         }

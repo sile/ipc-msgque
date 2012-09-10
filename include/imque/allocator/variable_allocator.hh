@@ -120,7 +120,9 @@ namespace imque {
         }
       
         uint32_t allocated_node_index = index(cand) + new_count; // memory descriptor
+        uint32_t ver = nodes_[allocated_node_index].version;
         nodes_[allocated_node_index] = cand.node().changeCount(need_chunk_count);
+        nodes_[allocated_node_index].version = ver+1;
         nodes_[allocated_node_index].next = 1; // XXX: 参照カウント実験
         nodes_[allocated_node_index].status = Node::ALLOCATED;
         return Descriptor::encode(nodes_[allocated_node_index].version, allocated_node_index);
@@ -130,7 +132,7 @@ namespace imque {
         return nodes_[Descriptor(md).index].count * sizeof(Chunk);
       }
       
-      bool dup(uint32_t md) {
+      bool dup(uint32_t md, uint32_t delta=1) {
         Descriptor desc(md);
 
         for(;;) {
@@ -142,7 +144,7 @@ namespace imque {
             return false;
           }
 
-          node.next++; // XXX: ref count
+          node.next += delta; // XXX: ref count
           if(snap.compare_and_swap(node)) {
             return true;
           }
