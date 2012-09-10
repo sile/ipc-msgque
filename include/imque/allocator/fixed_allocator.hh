@@ -9,22 +9,22 @@ namespace imque {
   namespace allocator {
     namespace FixedAllocatorAux {
       struct Block {
-        uint32_t next;    // index of next Block
+        uint64_t next;    // index of next Block
 
-        static const uint32_t END = 0xFFFFFFFF;
-      };
+        static const uint64_t END = 0xFFFFFFFFFFFFFFFF;
+      }__attribute__((packed));
       
       struct HeadBlock {
         //uint32_t version; // tag for ABA problem  // XXX: 不要かも
-        uint32_t next;    // index of next(head) Block
-      };
+        uint64_t next;    // index of next(head) Block
+      }__attribute__((packed));
 
       struct SuperBlock {
         uint32_t block_size;
         uint32_t used_count;
         uint32_t free_count;
         HeadBlock head;
-      };
+      }__attribute__((packed));
     }
     
     // ロックフリーな固定長ブロックアロケータ。
@@ -78,7 +78,7 @@ namespace imque {
       //
       // このメソッドが返す識別子の値は 30bitに収まる値 であることが保証されている。
       // ※ つまり、呼び出し側は、上位2bitが0bitであることを前提にしたコードを書くことができる
-      uint32_t allocate(uint32_t size) {
+      uint64_t allocate(uint32_t size) {
         if(size == 0) {
           return 0;
         }
@@ -100,13 +100,13 @@ namespace imque {
           if(atomic::compare_and_swap(&sb.head, head, new_head)) {
             atomic::add(&sb.used_count, 1);
             atomic::sub(&sb.free_count, 1);
-
+            
             return base_alc_.dupNew(head.next);
           }
         }
 
         // キャッシュには利用可能なブロックがないので、可変長ブロックアロケータに割当を依頼する
-        uint32_t md = base_alc_.allocate(sb.block_size); // memory descriptor
+        uint64_t md = base_alc_.allocate(sb.block_size); // memory descriptor
         if(md == 0) {
           return 0;
         }
@@ -117,7 +117,7 @@ namespace imque {
 
       // allocateメソッドで割り当てたメモリ領域を解放する。(解放に成功した場合は trueを、失敗した場合は false を返す)
       // md(メモリ記述子)が 0 の場合は何も行わない。
-      bool release(uint32_t md) {
+      bool release(uint64_t md) {
         if(md == 0) {
           return true;
         }
@@ -126,7 +126,7 @@ namespace imque {
         }
 
         uint32_t sb_id = getSuperBlockId(base_alc_.getSize(md));
-        uint32_t base_md = md; // XXX:
+        uint64_t base_md = md; // XXX:
         if(sb_id == 0) {
           return base_alc_.release(base_md);
         }
@@ -158,16 +158,16 @@ namespace imque {
         return true;
       }
 
-      bool dup(uint32_t md, uint32_t delta=1) {
+      bool dup(uint64_t md, uint32_t delta=1) {
         return base_alc_.dup(md, delta);
       }
 
       // allocateメソッドが返したメモリ記述子から、対応する実際にメモリ領域を取得する
       template<typename T>
-      T* ptr(uint32_t md) const { return base_alc_.ptr<T>(md); }
+      T* ptr(uint64_t md) const { return base_alc_.ptr<T>(md); }
       
       template<typename T>
-      T* ptr(uint32_t md, uint32_t offset) const { return base_alc_.ptr<T>(md, offset); }
+      T* ptr(uint64_t md, uint32_t offset) const { return base_alc_.ptr<T>(md, offset); }
 
     private:
       static uint32_t getSuperBlockId(uint32_t size) {

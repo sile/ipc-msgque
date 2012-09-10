@@ -144,11 +144,11 @@ template<typename T>
 struct Descriptor {};
 template<>
 struct Descriptor<imque::allocator::VariableAllocator> {
-  typedef uint32_t TYPE;
+  typedef uint64_t TYPE;
 };
 template<>
 struct Descriptor<imque::allocator::FixedAllocator> {
-  typedef uint32_t TYPE;
+  typedef uint64_t TYPE;
 };
 template<>
 struct Descriptor<MallocAllocator> {

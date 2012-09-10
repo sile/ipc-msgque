@@ -9,16 +9,15 @@ namespace imque {
   namespace allocator {
     namespace VariableAllocatorAux {
       struct Node {
-        uint32_t version:8; // tag for ABA problem
+        uint32_t version:14; // tag for ABA problem
         uint32_t next:24;   // index of next Node
-        uint32_t count:30;  // avaiable Chunk count
+        uint32_t count:24;  // avaiable Chunk count
         uint32_t status:2;
         
         enum STATUS {
           AVAILABLE = 0,
           JOIN_HEAD = 1, 
-          JOIN_TAIL = 2,
-          ALLOCATED = 3
+          JOIN_TAIL = 2
         };
         
         bool isAvaiable() const { return status == AVAILABLE; }
@@ -35,27 +34,33 @@ namespace imque {
         Node changeNext(uint32_t new_next) const { return (Node){version+1, new_next, count, status}; }
         Node changeCount(uint32_t new_count) const { return (Node){version+1, next, new_count, status}; }
         Node changeStatus(uint32_t new_status) const { return (Node){version+1, next, count, new_status}; }
-      };
+      }__attribute__((packed));
 
       struct Chunk {
         char padding[64];
       };
-
-      struct Descriptor {
-        Descriptor(uint32_t encoded_val) 
-          : version(encoded_val >> 24),
-            index(encoded_val & 0xFFFFFF) {
-        }
-
-        static uint32_t encode(uint32_t version, uint32_t index) {
-          return (version << 24) + index;
-        }
-          
-        uint32_t version:8; // tag for ABA problem
-        uint32_t index:24;  // index of next Node   
-      };
     }
     
+    // XXX:
+    struct Descriptor {
+      Descriptor(uint64_t encoded_val) {
+        memcpy(this, &encoded_val, sizeof(uint64_t));
+      }
+
+      static uint64_t encode(uint32_t version, uint32_t index, uint32_t size) {
+        Descriptor d(0);
+        d.version = version;
+        d.index = index;
+        d.size = size;
+        uint64_t val = 0;
+        memcpy(&val, &d, sizeof(uint64_t));
+        return val;
+      }
+      
+      uint32_t version:14; // tag for ABA problem
+      uint32_t index:24;
+      uint32_t size:26;
+    }__attribute__((packed));
     
     // ロックフリーな可変長ブロックアロケータ。
     // 一つのインスタンスで(実際に)割当可能なメモリ領域の最大長は sizeof(Chunk)*NODE_COUNT_LIMIT = 512MB
@@ -63,7 +68,6 @@ namespace imque {
       typedef VariableAllocatorAux::Node Node;
       typedef atomic::Snapshot<Node> NodeSnapshot;
       typedef VariableAllocatorAux::Chunk Chunk;
-      typedef VariableAllocatorAux::Descriptor Descriptor;
       
       static const int RETRY_LIMIT = 32;
       static const int FAST_RETRY_LIMIT = 1;
@@ -102,7 +106,7 @@ namespace imque {
       //
       // このメソッドが返す識別子の値は NODE_COUNT_LIMIT 未満の値(= 24bitに収まる値)であることが保証されている。
       // ※ つまり、呼び出し側は、上位8bitが0bitであることを前提にしたコードを書くことができる
-      uint32_t allocate(uint32_t size) {
+      uint64_t allocate(uint32_t size) {
         if(size == 0) {
           return 0; // invalid argument
         }
@@ -124,22 +128,20 @@ namespace imque {
         nodes_[allocated_node_index] = cand.node().changeCount(need_chunk_count);
         nodes_[allocated_node_index].version = ver+1;
         nodes_[allocated_node_index].next = 1; // XXX: 参照カウント実験
-        nodes_[allocated_node_index].status = Node::ALLOCATED;
-        return Descriptor::encode(nodes_[allocated_node_index].version, allocated_node_index);
+        return Descriptor::encode(nodes_[allocated_node_index].version, allocated_node_index, need_chunk_count*sizeof(Chunk));
       }
 
-      uint32_t getSize(uint32_t md) {
-        return nodes_[Descriptor(md).index].count * sizeof(Chunk);
+      uint32_t getSize(uint64_t md) {
+        return Descriptor(md).size;
       }
       
-      bool dup(uint32_t md, uint32_t delta=1) {
+      bool dup(uint64_t md, uint32_t delta=1) {
         Descriptor desc(md);
 
         for(;;) {
           NodeSnapshot snap(nodes_ + desc.index);
           Node node = snap.node();
           if(node.version != desc.version ||
-             node.status != Node::ALLOCATED ||
              node.next == 0) {
             return false;
           }
@@ -151,7 +153,7 @@ namespace imque {
         }
       }
 
-      uint32_t dupNew(uint32_t md) {
+      uint64_t dupNew(uint64_t md) {
         Descriptor desc(md);
 
         for(;;) {
@@ -166,21 +168,19 @@ namespace imque {
           
           node.version++;
           node.next = 1; // XXX: ref count
-          node.status = Node::ALLOCATED;
           if(snap.compare_and_swap(node)) {
-            return Descriptor::encode(node.version, index(snap));
+            return Descriptor::encode(node.version, desc.index, desc.size);
           }
         }
       }
 
-      bool undup(uint32_t md) {
+      bool undup(uint64_t md) {
         Descriptor desc(md);
         
         for(;;) {
           NodeSnapshot snap(nodes_ + desc.index);
           Node node = snap.node();
-          assert(node.status == Node::ALLOCATED &&
-                 node.version == desc.version);
+          assert(node.version == desc.version);
           
           if(node.next == 0) { // XXX: FixedAllocatorとの関係で今はここに来ることもある
             return true;
@@ -197,7 +197,7 @@ namespace imque {
       // md(メモリ記述子)が 0 の場合は何も行わない。
       //
       // メモリ解放は、極めて高い競合下で楽観的ロックの試行回数(RETRY_LIMIT)を越えた場合に失敗することがある。
-      bool release(uint32_t md) { // TODO: こっちは失敗しないようにしても良い(backoffとかと組み合わせて)
+      bool release(uint64_t md) { // TODO: こっちは失敗しないようにしても良い(backoffとかと組み合わせて)
         if(! undup(md)) {
           return true;
         }
@@ -205,7 +205,7 @@ namespace imque {
       }
       
       // 楽観的ロック失敗時の試行回数が少ない以外は releaseメソッド と同様。
-      bool fastRelease(uint32_t md) { // TODO: tryReleaseとかに変更?
+      bool fastRelease(uint64_t md) { // TODO: tryReleaseとかに変更?
         if(! undup(md)) {
           return true;
         }
@@ -214,10 +214,10 @@ namespace imque {
 
       // allocateメソッドが返したメモリ記述子から、対応する実際にメモリ領域を取得する
       template<typename T>
-      T* ptr(uint32_t md) const { return reinterpret_cast<T*>(chunks_ + Descriptor(md).index); }
+      T* ptr(uint64_t md) const { return reinterpret_cast<T*>(chunks_ + Descriptor(md).index); }
 
       template<typename T>
-      T* ptr(uint32_t md, uint32_t offset) const { return reinterpret_cast<T*>(ptr<char>(md)+offset); }
+      T* ptr(uint64_t md, uint32_t offset) const { return reinterpret_cast<T*>(ptr<char>(md)+offset); }
       
     private:
       struct IsEnoughChunk {
@@ -320,7 +320,7 @@ namespace imque {
         return node.node().next == index(node) + node.node().count; 
       }
 
-      bool releaseImpl(uint32_t md, int retry_limit, bool fast) {
+      bool releaseImpl(uint64_t md, int retry_limit, bool fast) {
         if(md == 0) { // || desc.index >= node_count_) {
           //assert(md < node_count_);
           return true;

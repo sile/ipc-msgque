@@ -13,13 +13,18 @@ namespace imque {
 
     // FIFOキュー
     class QueueImpl {
+      // XXX:
+      struct BaseNode {
+        uint64_t next;
+      };
+
       struct Node {
-        uint32_t next;
+        uint64_t next;
         uint32_t data_size;
         char data[0];
         
-        static const uint32_t END = 0;
-      };
+        static const uint64_t END = 0;
+      }__attribute__((packed)); // XXX:
 
       struct Stat {
         uint32_t overflowed_count;
@@ -29,8 +34,8 @@ namespace imque {
         char magic[sizeof(MAGIC)];
         uint32_t shm_size;
 
-        volatile uint32_t head;
-        volatile uint32_t tail;
+        volatile uint64_t head;
+        volatile uint64_t tail;
         
         Stat stat;
       };
@@ -54,7 +59,7 @@ namespace imque {
           memcpy(que_->magic, MAGIC, sizeof(MAGIC));
           que_->shm_size = shm_size_;
           
-          uint32_t md = alc_.allocate(sizeof(Node)); // XXX: 失敗時の処理
+          uint64_t md = alc_.allocate(sizeof(Node)); // XXX: 失敗時の処理
           assert(md != 0);
           
           alc_.ptr<Node>(md)->next = Node::END;
@@ -88,12 +93,12 @@ namespace imque {
         for(size_t i=0; i < count; i++) {
           total_size += sizev[i];
         }
-        uint32_t alloc_id = alc_.allocate(sizeof(Node) + total_size);
+        uint64_t alloc_id = alc_.allocate(sizeof(Node) + total_size);
         if(alloc_id == 0) {
           atomic::add(&que_->stat.overflowed_count, 1);
           return false;
         }
-
+        //std::cout << "# " << total_size << ", " << sizeof(Node) << std::endl;
         Node* node = alc_.ptr<Node>(alloc_id);
         node->next = Node::END;
         node->data_size = total_size;
@@ -103,6 +108,8 @@ namespace imque {
           memcpy(alc_.ptr<void>(alloc_id, offset), datav[i], sizev[i]);
           offset += sizev[i];
         }
+
+        //std::cout << "@ " << std::string(node->data, node->data_size) << std::endl;
 
         //std::cout << "in tail: " << que_->tail << ", " << alloc_id << std::endl;
 
@@ -118,14 +125,14 @@ namespace imque {
 
       // キューから要素を取り出し buf に格納する (キューが空の場合は false を返す)
       bool deq(std::string& buf) {
-        uint32_t md = deqImpl();
+        uint64_t md = deqImpl();
         if(md == 0) {
           return false;
         }
 
         Node* node = alc_.ptr<Node>(md);
         buf.assign(node->data, node->data_size);
-      
+        //std::cout << "# " << node->data_size << std::endl;
         assert(alc_.release(md));
         //std::cout << "tail: " << que_->tail << std::endl;
       
@@ -143,7 +150,7 @@ namespace imque {
 
       class RefPtr {
       public:
-        RefPtr(uint32_t md, allocator::FixedAllocator& alc) 
+        RefPtr(uint64_t md, allocator::FixedAllocator& alc) 
           : alc_(alc),
             md_(0) {
           if(alc.dup(md)) {
@@ -159,16 +166,16 @@ namespace imque {
 
         operator bool() const { return md_ != 0; }
 
-        Node* ptr() { return alc_.ptr<Node>(md_); }
-        uint32_t md() const { return md_; }
+        BaseNode* ptr() { return alc_.ptr<BaseNode>(md_); }
+        uint64_t md() const { return md_; }
         
       private:
         allocator::FixedAllocator& alc_;
-        uint32_t md_;
+        uint64_t md_;
       };
 
     private:
-      bool enqImpl(uint32_t new_tail) {
+      bool enqImpl(uint64_t new_tail) {
         assert(alc_.dup(new_tail, 2)); // headへの追加用: XXX: 場所
 
         for(;;) {
@@ -179,7 +186,7 @@ namespace imque {
             continue;
           }
 
-          Node node = atomic::fetch(tail.ptr());
+          BaseNode node = atomic::fetch(tail.ptr());
           if(node.next != Node::END) {
             if(atomic::compare_and_swap(&que_->tail, tail.md(), node.next)) {
               alc_.release(tail.md());
@@ -193,14 +200,14 @@ namespace imque {
         }
       }
 
-      uint32_t deqImpl() {
+      uint64_t deqImpl() {
         for(;;) {
           RefPtr head(que_->head, alc_);
           if(! head) {
             continue;
           }
 
-          Node node = atomic::fetch(head.ptr());
+          BaseNode node = atomic::fetch(head.ptr());
           if(node.next == Node::END) {
             return 0;
           }
