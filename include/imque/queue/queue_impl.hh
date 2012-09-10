@@ -88,7 +88,6 @@ namespace imque {
         for(size_t i=0; i < count; i++) {
           total_size += sizev[i];
         }
-
         uint32_t alloc_id = alc_.allocate(sizeof(Node) + total_size);
         if(alloc_id == 0) {
           atomic::add(&que_->stat.overflowed_count, 1);
@@ -105,11 +104,14 @@ namespace imque {
           offset += sizev[i];
         }
 
+        //std::cout << "in tail: " << que_->tail << ", " << alloc_id << std::endl;
+
         if(enqImpl(alloc_id) == false) {
           assert(alc_.release(alloc_id));
           atomic::add(&que_->stat.overflowed_count, 1);
           return false;
         }
+        //std::cout << "tail: " << que_->tail << std::endl;
       
         return true;
       }
@@ -125,6 +127,7 @@ namespace imque {
         buf.assign(node->data, node->data_size);
       
         assert(alc_.release(md));
+        //std::cout << "tail: " << que_->tail << std::endl;
       
         return true;
       }
@@ -171,10 +174,12 @@ namespace imque {
 
         for(;;) {
           RefPtr tail(que_->tail, alc_);
+
           if(! tail) {
+            // assert(false);
             continue;
           }
-          
+
           Node node = atomic::fetch(tail.ptr());
           if(node.next != Node::END) {
             if(atomic::compare_and_swap(&que_->tail, tail.md(), node.next)) {
@@ -184,11 +189,14 @@ namespace imque {
           }
 
           if(atomic::compare_and_swap(&tail.ptr()->next, node.next, new_tail)) {
+            /*
+            if(atomic::compare_and_swap(&que_->tail, tail.md(), new_tail)) {
+              alc_.release(tail.md());
+            } 
+            */
             return true;
           }
         }
-        
-        return true;
       }
 
       uint32_t deqImpl() {

@@ -38,7 +38,7 @@ namespace imque {
       };
 
       struct Chunk {
-        char padding[32];
+        char padding[64];
       };
     }
     
@@ -110,19 +110,24 @@ namespace imque {
         return allocated_node_index; 
       }
 
-      bool refincr(uint32_t md) {
+      bool refincr(uint32_t md, bool any=false) {
         for(;;) {
           NodeSnapshot snap(nodes_ + md);
           if(snap.node().status != Node::ALLOCATED) { // XXX: これだけでは一周してしまっているケースを検出できない
+            //std::cout << "@enc: " << md << std::endl;
+            //assert(false);
             return false;
           }
 
-          if(snap.node().next == 0) {
+          if(!any && snap.node().next == 0) {
+            //std::cout << "@enc2: " << md << std::endl;
+            // assert(false); // XXX:
             return false;
           }
         
           Node n = snap.node().changeNext(snap.node().next+1);
           if(snap.compare_and_swap(n)) {
+            //std::cout << "@enc: " << md << "# " << n.next << std::endl;
             return true;
           }
         }
@@ -132,9 +137,14 @@ namespace imque {
         for(;;) {
           NodeSnapshot snap(nodes_ + md);
           assert(snap.node().status == Node::ALLOCATED);
-        
+          
+          if(snap.node().next == 0) { // XXX: FixedAllocatorとの関係で今はここに来ることもある
+            return true;
+          }
+
           Node n = snap.node().changeNext(snap.node().next-1);
           if(snap.compare_and_swap(n)) {
+            //std::cout << "@dec: " << md << "# " <<  n.next << std::endl;
             return n.next == 0;
           }
         }
@@ -145,12 +155,17 @@ namespace imque {
       //
       // メモリ解放は、極めて高い競合下で楽観的ロックの試行回数(RETRY_LIMIT)を越えた場合に失敗することがある。
       bool release(uint32_t md) {
-        std::cout << "@ in release" << std::endl;
+        //std::cout << "@ in release" << std::endl;
         if(refdecr(md) == false) {
           return true;
         }
-        std::cout << "@ real release" << std::endl;
-        return releaseImpl(md, RETRY_LIMIT, false);
+        //std::cout << "@ real release" << std::endl;
+        if(releaseImpl(md, RETRY_LIMIT, false)) {
+          return true;
+        } else {
+          // refincr(md, true);
+          return false;
+        }
       }
       
       // 楽観的ロック失敗時の試行回数が少ない以外は releaseメソッド と同様。
@@ -158,7 +173,12 @@ namespace imque {
         if(refdecr(md) == false) {
           return true;
         }
-        return releaseImpl(md, FAST_RETRY_LIMIT, true);
+        if(releaseImpl(md, FAST_RETRY_LIMIT, true)) {
+          return true;
+        } else {
+          // refincr(md, true);
+          return false;
+        }
       }
 
       // allocateメソッドが返したメモリ記述子から、対応する実際にメモリ領域を取得する

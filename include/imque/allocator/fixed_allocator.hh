@@ -35,8 +35,8 @@ namespace imque {
       typedef FixedAllocatorAux::HeadBlock HeadBlock;
       typedef FixedAllocatorAux::SuperBlock SuperBlock;
       
-      static const uint32_t SUPER_BLOCK_COUNT = 8;
-      static const uint32_t BLOCK_SIZE_START = 32;
+      static const uint32_t SUPER_BLOCK_COUNT = 7;
+      static const uint32_t BLOCK_SIZE_START = 64;
       static const uint32_t BLOCK_SIZE_LAST  = BLOCK_SIZE_START << (SUPER_BLOCK_COUNT-1);
       static const uint32_t SUPER_BLOCKS_SIZE = sizeof(SuperBlock)*SUPER_BLOCK_COUNT;
       
@@ -100,6 +100,10 @@ namespace imque {
           if(atomic::compare_and_swap(&sb.head, head, new_head)) {
             atomic::add(&sb.used_count, 1);
             atomic::sub(&sb.free_count, 1);
+
+
+            base_alc_.refincr(head.next, true); // XXX:
+            
             return encodeSuperBlockId(sb_id, head.next);
           }
         }
@@ -117,12 +121,11 @@ namespace imque {
       // allocateメソッドで割り当てたメモリ領域を解放する。(解放に成功した場合は trueを、失敗した場合は false を返す)
       // md(メモリ記述子)が 0 の場合は何も行わない。
       bool release(uint32_t md) {
-        if(base_alc_.refdecr(decodeBaseMemoryDesc(md)) == false) {
-          return true; // XXX:
-        }
-
         if(md == 0) {
           return true;
+        }
+        if(base_alc_.refdecr(decodeBaseMemoryDesc(md)) == false) {
+          return true; // XXX:
         }
 
         uint32_t sb_id = decodeSuperBlockId(md);
@@ -152,6 +155,7 @@ namespace imque {
             break;
           }
         }
+
         atomic::sub(&sb.used_count, 1);
         atomic::add(&sb.free_count, 1);
         return true;
