@@ -241,7 +241,7 @@ namespace imque {
         }
         // 極めて高い競合下では、以下のassertionがfalseになる場合はある。
         // 原因はおそらくABA問題で Node.version に割り当てるビット量を増やせば発生頻度は低下する。
-        // ※ ただしFixedAllocatorと併用する場合は、ほぼ間違いなくといって良いほど、この問題は怒らないので、
+        // ※ ただしFixedAllocatorと併用する場合は、ほぼ間違いなくといって良いほど、この問題は起こらないので、
         //    現状の割り当てビット数で問題ない。
         assert(node_index >= index(pred)+pred.node().count);
 
