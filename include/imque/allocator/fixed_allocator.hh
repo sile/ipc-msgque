@@ -117,6 +117,10 @@ namespace imque {
       // allocateメソッドで割り当てたメモリ領域を解放する。(解放に成功した場合は trueを、失敗した場合は false を返す)
       // md(メモリ記述子)が 0 の場合は何も行わない。
       bool release(uint32_t md) {
+        if(base_alc_.refdecr(decodeBaseMemoryDesc(md)) == false) {
+          return true; // XXX:
+        }
+
         if(md == 0) {
           return true;
         }

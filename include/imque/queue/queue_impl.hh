@@ -61,6 +61,7 @@ namespace imque {
           
           que_->head = md;
           que_->tail = md;
+          alc_.refincr(md);
 
           que_->stat.overflowed_count = 0;
         }
@@ -137,27 +138,54 @@ namespace imque {
       size_t overflowedCount() const { return que_->stat.overflowed_count; }
       void resetOverflowedCount() { que_->stat.overflowed_count = 0; }
 
+      class RefPtr {
+      public:
+        RefPtr(uint32_t md, allocator::FixedAllocator& alc) 
+          : alc_(alc),
+            md_(0) {
+          if(alc.refincr(md)) {
+            md_ = md;
+          }
+        }
+        
+        ~RefPtr() {
+          if(md_) {
+            alc_.release(md_);
+          }
+        }
+
+        operator bool() const { return md_ != 0; }
+
+        Node* ptr() { return alc_.ptr<Node>(md_); }
+        uint32_t md() const { return md_; }
+        
+      private:
+        allocator::FixedAllocator& alc_;
+        uint32_t md_;
+      };
+
     private:
       bool enqImpl(uint32_t new_tail) {
+        alc_.refincr(new_tail); // headへの追加用: XXX: 場所
+        alc_.refincr(new_tail); // tailへの追加用
+
         for(;;) {
-          uint32_t tail = que_->tail;
-          if(alc_.refincr(tail) == false) { // TODO: pointer取得と統合してしまっても良いかもしれない
+          RefPtr tail(que_->tail, alc_);
+          if(! tail) {
             continue;
           }
           
-          Node node = atomic::fetch(alc_.ptr<Node>(tail));
+          Node node = atomic::fetch(tail.ptr());
           if(node.next != Node::END) {
-            atomic::compare_and_swap(&que_->tail, tail, node.next);
-            alc_.release(tail);
+            if(atomic::compare_and_swap(&que_->tail, tail.md(), node.next)) {
+              alc_.release(tail.md());
+            } 
             continue;
           }
 
-          if(atomic::compare_and_swap(&alc_.ptr<Node>(tail)->next, node.next, new_tail)) {
-            atomic::compare_and_swap(&que_->tail, tail, new_tail);
-            alc_.release(tail);
+          if(atomic::compare_and_swap(&tail.ptr()->next, node.next, new_tail)) {
             return true;
           }
-          alc_.release(tail);
         }
         
         return true;
@@ -165,20 +193,19 @@ namespace imque {
 
       uint32_t deqImpl() {
         for(;;) {
-          uint32_t head = que_->head;
-          if(alc_.refincr(head) == false) {
+          RefPtr head(que_->head, alc_);
+          if(! head) {
             continue;
           }
 
-          Node node = atomic::fetch(alc_.ptr<Node>(head));
+          Node node = atomic::fetch(head.ptr());
           if(node.next == Node::END) {
-            alc_.release(head);
             return 0;
           }
 
-          if(atomic::compare_and_swap(&que_->head, head, node.next)) {
-            alc_.release(head);
-            return head;
+          if(atomic::compare_and_swap(&que_->head, head.md(), node.next)) {
+            alc_.release(head.md());
+            return node.next;
           }
         }
       }

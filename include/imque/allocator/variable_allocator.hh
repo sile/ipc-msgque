@@ -1,6 +1,6 @@
 #ifndef IMQUE_ALLOCATOR_VARIABLE_ALLOCATOR_HH
 #define IMQUE_ALLOCATOR_VARIABLE_ALLOCATOR_HH
-
+#include <iostream> // XXX: for debug
 #include "../atomic/atomic.hh"
 #include <cassert>
 #include <inttypes.h>
@@ -145,9 +145,11 @@ namespace imque {
       //
       // メモリ解放は、極めて高い競合下で楽観的ロックの試行回数(RETRY_LIMIT)を越えた場合に失敗することがある。
       bool release(uint32_t md) {
+        std::cout << "@ in release" << std::endl;
         if(refdecr(md) == false) {
           return true;
         }
+        std::cout << "@ real release" << std::endl;
         return releaseImpl(md, RETRY_LIMIT, false);
       }
       
