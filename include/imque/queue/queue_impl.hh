@@ -61,7 +61,7 @@ namespace imque {
           
           que_->head = md;
           que_->tail = md;
-          alc_.refincr(md);
+          alc_.dup(md);
 
           que_->stat.overflowed_count = 0;
         }
@@ -146,7 +146,7 @@ namespace imque {
         RefPtr(uint32_t md, allocator::FixedAllocator& alc) 
           : alc_(alc),
             md_(0) {
-          if(alc.refincr(md)) {
+          if(alc.dup(md)) {
             md_ = md;
           }
         }
@@ -169,8 +169,8 @@ namespace imque {
 
     private:
       bool enqImpl(uint32_t new_tail) {
-        alc_.refincr(new_tail); // headへの追加用: XXX: 場所
-        alc_.refincr(new_tail); // tailへの追加用
+        alc_.dup(new_tail); // headへの追加用: XXX: 場所
+        alc_.dup(new_tail); // tailへの追加用
 
         for(;;) {
           RefPtr tail(que_->tail, alc_);

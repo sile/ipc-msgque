@@ -15,7 +15,7 @@ namespace imque {
       };
       
       struct HeadBlock {
-        uint32_t version; // tag for ABA problem
+        uint32_t version; // tag for ABA problem  // XXX: 不要かも
         uint32_t next;    // index of next(head) Block
       };
 
@@ -101,10 +101,7 @@ namespace imque {
             atomic::add(&sb.used_count, 1);
             atomic::sub(&sb.free_count, 1);
 
-
-            base_alc_.refincr(head.next, true); // XXX:
-            
-            return encodeSuperBlockId(sb_id, head.next);
+            return base_alc_.dupNew(head.next);
           }
         }
 
@@ -115,7 +112,7 @@ namespace imque {
         }
 
         atomic::add(&sb.used_count, 1);
-        return encodeSuperBlockId(sb_id, md);
+        return md;
       }
 
       // allocateメソッドで割り当てたメモリ領域を解放する。(解放に成功した場合は trueを、失敗した場合は false を返す)
@@ -124,12 +121,12 @@ namespace imque {
         if(md == 0) {
           return true;
         }
-        if(base_alc_.refdecr(decodeBaseMemoryDesc(md)) == false) {
+        if(! base_alc_.undup(md)) {
           return true; // XXX:
         }
 
-        uint32_t sb_id = decodeSuperBlockId(md);
-        uint32_t base_md = decodeBaseMemoryDesc(md);
+        uint32_t sb_id = getSuperBlockId(base_alc_.getSize(md));
+        uint32_t base_md = md; // XXX:
         if(sb_id == 0) {
           return base_alc_.release(base_md);
         }
@@ -161,16 +158,16 @@ namespace imque {
         return true;
       }
 
-      bool refincr(uint32_t md) {
-        return base_alc_.refincr(decodeBaseMemoryDesc(md));
+      bool dup(uint32_t md) {
+        return base_alc_.dup(md);
       }
 
       // allocateメソッドが返したメモリ記述子から、対応する実際にメモリ領域を取得する
       template<typename T>
-      T* ptr(uint32_t md) const { return base_alc_.ptr<T>(decodeBaseMemoryDesc(md)); }
+      T* ptr(uint32_t md) const { return base_alc_.ptr<T>(md); }
       
       template<typename T>
-      T* ptr(uint32_t md, uint32_t offset) const { return base_alc_.ptr<T>(decodeBaseMemoryDesc(md), offset); }
+      T* ptr(uint32_t md, uint32_t offset) const { return base_alc_.ptr<T>(md, offset); }
 
     private:
       static uint32_t getSuperBlockId(uint32_t size) {
@@ -183,10 +180,6 @@ namespace imque {
         return id;
       }
       
-      static uint32_t encodeSuperBlockId(uint32_t id, uint32_t md) { return md | (id << 28);  }
-      static uint32_t decodeSuperBlockId(uint32_t encoded_md)      { return encoded_md >> 28; } 
-      static uint32_t decodeBaseMemoryDesc(uint32_t encoded_md)    { return encoded_md & 0xFFFFFFF; }
-
     private:
       SuperBlock* super_blocks_;
       VariableAllocator base_alc_;
