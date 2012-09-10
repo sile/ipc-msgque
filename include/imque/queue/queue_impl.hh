@@ -115,28 +115,20 @@ namespace imque {
 
       // キューから要素を取り出し buf に格納する (キューが空の場合は false を返す)
       bool deq(std::string& buf) {
-        return true;
-        /*
-        if(isEmpty()) {
+        uint32_t md = deqImpl();
+        if(md == 0) {
           return false;
         }
 
-        uint32_t alloc_id = deqImpl();
-        if(alloc_id == 0) {
-          return false;
-        }
-
-        size_t size = alc_.ptr<size_t>(alloc_id)[0];
-        char*  data = alc_.ptr<char>(alloc_id, sizeof(size_t));
-        buf.assign(data, size);
+        Node* node = alc_.ptr<Node>(md);
+        buf.assign(node->data, node->data_size);
       
-        assert(alc_.release(alloc_id));
+        assert(alc_.release(md));
       
         return true;
-        */
       }
 
-      bool isEmpty() const { return que_->head == que_->tail; }
+      bool isEmpty() const { return que_->head == que_->tail; } // XXX: 不正確 (両者はズレる可能性あり)。もしバージョンを導入するなら、その比較を行った方が正確
 
       bool isFull()  const { return false; }   // XXX: dummy
       size_t entryCount() const { return 10; } // XXX: dummy
@@ -149,7 +141,7 @@ namespace imque {
       bool enqImpl(uint32_t new_tail) {
         for(;;) {
           uint32_t tail = que_->tail;
-          if(alc_.refincr(tail) == false) {
+          if(alc_.refincr(tail) == false) { // TODO: pointer取得と統合してしまっても良いかもしれない
             continue;
           }
           
@@ -171,33 +163,25 @@ namespace imque {
         return true;
       }
 
-      /*
       uint32_t deqImpl() {
-        uint32_t curr_read  = que_->read_pos;
-        uint32_t curr_write = que_->write_pos;
-        uint32_t next_read = (curr_read+1) % que_->entry_limit;
-      
-        if(curr_read == curr_write) {
-          return 0;
-        }
+        for(;;) {
+          uint32_t head = que_->head;
+          if(alc_.refincr(head) == false) {
+            continue;
+          }
 
-        Entry* pe = &que_->entries[curr_read];
-        Entry   e = *pe;
-        if(e.state == Entry::FREE) {
-          atomic::compare_and_swap(&que_->read_pos, curr_read, next_read);
-          return deqImpl();
-        }
+          Node node = atomic::fetch(alc_.ptr<Node>(head));
+          if(node.next == Node::END) {
+            alc_.release(head);
+            return 0;
+          }
 
-        uint32_t new_version = atomic::fetch_and_add(&que_->version, 1);
-        Entry new_e = {Entry::FREE, new_version};
-        if(atomic::compare_and_swap(pe, e, new_e) == false) {
-          return deqImpl();
+          if(atomic::compare_and_swap(&que_->head, head, node.next)) {
+            alc_.release(head);
+            return head;
+          }
         }
-      
-        atomic::compare_and_swap(&que_->read_pos, curr_read, next_read);
-        return e.value;
       }
-      */
 
       static size_t queSize(size_t entry_limit) {
         return sizeof(Header);
