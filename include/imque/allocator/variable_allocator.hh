@@ -17,7 +17,8 @@ namespace imque {
         enum STATUS {
           AVAILABLE = 0,
           JOIN_HEAD = 1, 
-          JOIN_TAIL = 2
+          JOIN_TAIL = 2,
+          ALLOCATED = 3
         };
         
         bool isAvaiable() const { return status == AVAILABLE; }
@@ -104,7 +105,39 @@ namespace imque {
       
         uint32_t allocated_node_index = index(cand) + new_count; // memory descriptor
         nodes_[allocated_node_index] = cand.node().changeCount(need_chunk_count);
+        nodes_[allocated_node_index].next = 1; // XXX: 参照カウント実験
+        nodes_[allocated_node_index].status = Node::ALLOCATED;
         return allocated_node_index; 
+      }
+
+      bool refincr(uint32_t md) {
+        for(;;) {
+          NodeSnapshot snap(nodes_ + md);
+          if(snap.node().status != Node::ALLOCATED) { // XXX: これだけでは一周してしまっているケースを検出できない
+            return false;
+          }
+
+          if(snap.node().next == 0) {
+            return false;
+          }
+        
+          Node n = snap.node().changeNext(snap.node().next+1);
+          if(snap.compare_and_swap(n)) {
+            return true;
+          }
+        }
+      }
+
+      bool refdecr(uint32_t md) {
+        for(;;) {
+          NodeSnapshot snap(nodes_ + md);
+          assert(snap.node().status == Node::ALLOCATED);
+        
+          Node n = snap.node().changeNext(snap.node().next-1);
+          if(snap.compare_and_swap(n)) {
+            return n.next == 0;
+          }
+        }
       }
 
       // allocateメソッドで割り当てたメモリ領域を解放する。(解放に成功した場合は trueを、失敗した場合は false を返す)
@@ -112,11 +145,17 @@ namespace imque {
       //
       // メモリ解放は、極めて高い競合下で楽観的ロックの試行回数(RETRY_LIMIT)を越えた場合に失敗することがある。
       bool release(uint32_t md) {
+        if(refdecr(md) == false) {
+          return true;
+        }
         return releaseImpl(md, RETRY_LIMIT, false);
       }
       
       // 楽観的ロック失敗時の試行回数が少ない以外は releaseメソッド と同様。
       bool fastRelease(uint32_t md) {
+        if(refdecr(md) == false) {
+          return true;
+        }
         return releaseImpl(md, FAST_RETRY_LIMIT, true);
       }
 
@@ -254,6 +293,7 @@ namespace imque {
         } else {
           new_pred_node = pred.node().changeNext(node_index);
           node->next = pred.node().next;
+          node->status = Node::AVAILABLE;
         }
       
         if(pred.compare_and_swap(new_pred_node) == false) {
