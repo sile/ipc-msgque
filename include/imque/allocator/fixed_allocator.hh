@@ -153,6 +153,10 @@ namespace imque {
         return true;
       }
 
+      bool refincr(uint32_t md) {
+        return base_alc_.refincr(decodeBaseMemoryDesc(md));
+      }
+
       // allocateメソッドが返したメモリ記述子から、対応する実際にメモリ領域を取得する
       template<typename T>
       T* ptr(uint32_t md) const { return base_alc_.ptr<T>(decodeBaseMemoryDesc(md)); }
