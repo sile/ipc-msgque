@@ -43,18 +43,24 @@ namespace imque {
     
     // XXX:
     struct Descriptor {
-      Descriptor(uint64_t encoded_val) {
-        memcpy(this, &encoded_val, sizeof(uint64_t));
+      static Descriptor decode(uint64_t encoded_val) {
+        union {
+          Descriptor d;
+          uint64_t   i;
+        } u;
+        u.i = encoded_val;
+        return u.d;
       }
 
       static uint64_t encode(uint32_t version, uint32_t index, uint32_t size) {
-        Descriptor d(0);
-        d.version = version;
-        d.index = index;
-        d.size = size;
-        uint64_t val = 0;
-        memcpy(&val, &d, sizeof(uint64_t));
-        return val;
+        union {
+          Descriptor d;
+          uint64_t   i;
+        } u;
+        u.d.version = version;
+        u.d.index = index;
+        u.d.size = size;
+        return u.i;
       }
       
       uint32_t version:14; // tag for ABA problem
@@ -132,11 +138,11 @@ namespace imque {
       }
 
       uint32_t getSize(uint64_t md) {
-        return Descriptor(md).size;
+        return Descriptor::decode(md).size;
       }
       
       bool dup(uint64_t md, uint32_t delta=1) {
-        Descriptor desc(md);
+        Descriptor desc = Descriptor::decode(md);
 
         for(;;) {
           NodeSnapshot snap(nodes_ + desc.index);
@@ -154,7 +160,7 @@ namespace imque {
       }
 
       uint64_t dupNew(uint64_t md) {
-        Descriptor desc(md);
+        Descriptor desc = Descriptor::decode(md);
 
         for(;;) {
           NodeSnapshot snap(nodes_ + desc.index);
@@ -175,7 +181,7 @@ namespace imque {
       }
 
       bool undup(uint64_t md) {
-        Descriptor desc(md);
+        Descriptor desc = Descriptor::decode(md);
         
         for(;;) {
           NodeSnapshot snap(nodes_ + desc.index);
@@ -214,7 +220,7 @@ namespace imque {
 
       // allocateメソッドが返したメモリ記述子から、対応する実際にメモリ領域を取得する
       template<typename T>
-      T* ptr(uint64_t md) const { return reinterpret_cast<T*>(chunks_ + Descriptor(md).index); }
+      T* ptr(uint64_t md) const { return reinterpret_cast<T*>(chunks_ + Descriptor::decode(md).index); }
 
       template<typename T>
       T* ptr(uint64_t md, uint32_t offset) const { return reinterpret_cast<T*>(ptr<char>(md)+offset); }
@@ -326,7 +332,7 @@ namespace imque {
           return true;
         }
 
-        Descriptor desc(md);
+        Descriptor desc = Descriptor::decode(md);
 
         uint32_t node_index = desc.index;
         NodeSnapshot pred;

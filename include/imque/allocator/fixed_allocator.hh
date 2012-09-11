@@ -12,19 +12,19 @@ namespace imque {
         uint64_t next;    // index of next Block
 
         static const uint64_t END = 0xFFFFFFFFFFFFFFFF;
-      }__attribute__((packed));
+      };
       
       struct HeadBlock {
         //uint32_t version; // tag for ABA problem  // XXX: 不要かも
         uint64_t next;    // index of next(head) Block
-      }__attribute__((packed));
+      };
 
       struct SuperBlock {
         uint32_t block_size;
         uint32_t used_count;
         uint32_t free_count;
         HeadBlock head;
-      }__attribute__((packed));
+      };
     }
     
     // ロックフリーな固定長ブロックアロケータ。
