@@ -106,11 +106,7 @@ namespace imque {
 
         //std::cout << "in tail: " << que_->tail << ", " << alloc_id << std::endl;
 
-        if(enqImpl(alloc_id) == false) {
-          assert(alc_.release(alloc_id));
-          atomic::add(&que_->stat.overflowed_count, 1);
-          return false;
-        }
+        enqImpl(alloc_id);
         //std::cout << "tail: " << que_->tail << std::endl;
       
         return true;
@@ -168,7 +164,7 @@ namespace imque {
       };
 
     private:
-      bool enqImpl(uint32_t new_tail) {
+      void enqImpl(uint32_t new_tail) {
         assert(alc_.dup(new_tail, 2)); // headへの追加用: XXX: 場所
 
         for(;;) {
@@ -188,7 +184,7 @@ namespace imque {
           }
 
           if(atomic::compare_and_swap(&tail.ptr()->next, node.next, new_tail)) {
-            return true;
+            break;
           }
         }
       }
