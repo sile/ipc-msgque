@@ -9,7 +9,7 @@ namespace imque {
   namespace allocator {
     namespace FixedAllocatorAux {
       struct Block {
-        uint32_t next;    // index of next Block
+        uint32_t next; // index of next Block
 
         static const uint32_t END = 0xFFFFFFFF;
       };
@@ -36,7 +36,7 @@ namespace imque {
       
     public:
       // region: 割当に使用するメモリ領域。
-      // size: regionのサイズ。メモリ領域の内の sizeof(Node)/sizeof(Chunk) + α は管理用に利用される。
+      // size: regionのサイズ
       FixedAllocator(void* region, uint32_t size) 
         : super_blocks_(reinterpret_cast<SuperBlock*>(region)),
           base_alc_(super_blocks_+SUPER_BLOCK_COUNT, 
@@ -68,9 +68,6 @@ namespace imque {
       // メモリ割当を行う。
       // 要求したサイズの割当に失敗した場合は 0 を、それ以外はメモリ領域参照用の識別子(記述子)を返す。
       // (識別子を ptrメソッド に渡すことで、実際のメモリ領域を参照可能)
-      //
-      // このメソッドが返す識別子の値は 30bitに収まる値 であることが保証されている。
-      // ※ つまり、呼び出し側は、上位2bitが0bitであることを前提にしたコードを書くことができる
       uint32_t allocate(uint32_t size) {
         if(size == 0) {
           return 0;
@@ -94,7 +91,7 @@ namespace imque {
             atomic::add(&sb.used_count, 1);
             atomic::sub(&sb.free_count, 1);
 
-            return base_alc_.dupNew(head.next);
+            return base_alc_.dupNew(head.next); // キャッシュから再利用
           }
         }
 
@@ -115,22 +112,20 @@ namespace imque {
           return true;
         }
         if(! base_alc_.undup(md)) {
-          return true; // XXX:
+          return true; // まだ誰かが参照中
         }
 
         uint32_t sb_id = getSuperBlockId(base_alc_.getSize(md));
-        uint32_t base_md = md; // XXX:
         if(sb_id == 0) {
-          return base_alc_.release(base_md);
+          return base_alc_.release(md);
         }
         assert(sb_id <= SUPER_BLOCK_COUNT);
-        assert(base_md != 0);
 
         SuperBlock& sb = super_blocks_[sb_id-1];
 
         // キャッシュに溜めておく必要がないなら、ブロックを解放する
         if(sb.used_count < sb.free_count &&
-           base_alc_.lightRelease(base_md)) {
+           base_alc_.lightRelease(md)) {
           atomic::sub(&sb.used_count, 1);
           return true;
         }
@@ -138,7 +133,7 @@ namespace imque {
         // キャッシュが不足しているか、高競合下によりブロック解放に失敗した場合は、キャッシュに追加する
         for(;;) {
           Block head = atomic::fetch(&sb.head);
-          Block new_head = {base_md};
+          Block new_head = {md};
           base_alc_.ptr<Block>(new_head.next)->next = head.next;
           
           if(atomic::compare_and_swap(&sb.head, head, new_head)) {
