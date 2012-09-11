@@ -158,11 +158,7 @@ namespace imque {
           NodeSnapshot snap(nodes_ + desc.index);
           Node node = snap.node();
           
-          assert(node.version == desc.version);
-          
-          // fastRelease()が失敗すると以下の二つはfalseになる
-          // assert(node.status == Node::ALLOCATED);
-          // assert(node.next == 0);
+          // assert(node.version == desc.version);
           
           node.version++;
           node.next = 1; // XXX: ref count
@@ -345,7 +341,7 @@ namespace imque {
           new_pred_node = pred.node().changeCount(pred.node().count + node->count);
         } else {
           new_pred_node = pred.node().changeNext(node_index);
-          node->version = desc.version; // XXX:
+          node->version = desc.version + 1; // XXX:
           node->next = pred.node().next;
           node->status = Node::AVAILABLE;
         }

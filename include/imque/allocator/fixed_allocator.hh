@@ -14,16 +14,11 @@ namespace imque {
         static const uint32_t END = 0xFFFFFFFF;
       };
       
-      struct HeadBlock {
-        //uint32_t version; // tag for ABA problem  // XXX: 不要かも
-        uint32_t next;    // index of next(head) Block
-      };
-
       struct SuperBlock {
         uint32_t block_size;
         uint32_t used_count;
         uint32_t free_count;
-        HeadBlock head;
+        Block head;
       };
     }
     
@@ -32,7 +27,6 @@ namespace imque {
     // BLOCK_SIZE_LAST を越えるサイズのメモリ割当要求に対しては VariableAllocator に直接処理を委譲する。
     class FixedAllocator {
       typedef FixedAllocatorAux::Block Block;
-      typedef FixedAllocatorAux::HeadBlock HeadBlock;
       typedef FixedAllocatorAux::SuperBlock SuperBlock;
       
       static const uint32_t SUPER_BLOCK_COUNT = 7;
@@ -64,7 +58,6 @@ namespace imque {
             sb.block_size = block_size;
             sb.used_count = 0;
             sb.free_count = 0;
-            //sb.head.version = 0;
             sb.head.next  = Block::END;
             
             block_size *= 2;
@@ -91,11 +84,11 @@ namespace imque {
         SuperBlock& sb = super_blocks_[sb_id-1];
       
         // まずキャッシュからのブロック取得を試みる
-        for(HeadBlock head = atomic::fetch(&sb.head);
+        for(Block head = atomic::fetch(&sb.head);
             head.next != Block::END;
             head = atomic::fetch(&sb.head)) {
           Block block = *base_alc_.ptr<Block>(head.next);
-          HeadBlock new_head = {/*head.version+1,*/ block.next};
+          Block new_head = {block.next};
         
           if(atomic::compare_and_swap(&sb.head, head, new_head)) {
             atomic::add(&sb.used_count, 1);
@@ -144,8 +137,8 @@ namespace imque {
         
         // キャッシュが不足しているか、高競合下によりブロック解放に失敗した場合は、キャッシュに追加する
         for(;;) {
-          HeadBlock head = atomic::fetch(&sb.head);
-          HeadBlock new_head = {/*head.version+1,*/ base_md};
+          Block head = atomic::fetch(&sb.head);
+          Block new_head = {base_md};
           base_alc_.ptr<Block>(new_head.next)->next = head.next;
           
           if(atomic::compare_and_swap(&sb.head, head, new_head)) {
