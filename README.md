@@ -1,5 +1,6 @@
 ## 概要
 * FIFOキュー
+  * unbounded
 * ロックフリー
   * 再入可能 かつ SIGKILLに対して安全
 * マルチプロセス間の通信(IPC)に使用可能
@@ -31,12 +32,12 @@ namespace imque {
   public:
     // 親子プロセス間で共有可能なキューを作成する
     // shm_size は共有メモリ領域のサイズ (最大約256MB)
-    Queue(size_t entry_count, size_t shm_size);
+    Queue(size_t shm_size);
       
     // 複数プロセス間で共有可能なキューを作成する 
     // shm_size は共有メモリ領域のサイズ (最大約256MB)
     // filepath は共有メモリのマッピングに使用するファイルのパス
-    Queue(size_t entry_count, size_t shm_size, const std::string& filepath, mode_t mode=0660);
+    Queue(size_t shm_size, const std::string& filepath, mode_t mode=0660);
 
     // キューが有効なら true, 無効なら false を返す
     operator bool() const;
@@ -56,13 +57,7 @@ namespace imque {
     bool deq(std::string& data);
 
     // キューが空なら true を返す
-    bool isEmpty() const;
-
-    // キューに満杯なら true を返す
-    bool isFull()  const;
-
-    // 格納済み要素の数を取得する
-    size_t entryCount() const;
+    bool isEmpty();
     
     // キューへの要素追加に失敗した回数を返す
     size_t overflowedCount() const;
@@ -84,7 +79,7 @@ namespace imque {
 #include <string>
 
 int main(int argc, char** argv) {
-  imque::Queue que(32, 4096);
+  imque::Queue que(4096);
   if(! que) {
     return 1;
   }
@@ -125,7 +120,6 @@ int main(int argc, char** argv) {
 
 #define SHM_FILE_PATH "/tmp/msgque.shm"
 #define SHM_SIZE 4096
-#define QUEUE_ENTRY_COUNT 8
 
 int main(int argc, char** argv) {
   if(argc != 2) {
@@ -134,7 +128,7 @@ int main(int argc, char** argv) {
     return 1;
   }
 
-  imque::Queue que(QUEUE_ENTRY_COUNT, SHM_SIZE, SHM_FILE_PATH);
+  imque::Queue que(SHM_SIZE, SHM_FILE_PATH);
   if(! que) {
     std::cerr << "queue initialization failed" << std::endl;
     return 1;
@@ -163,8 +157,6 @@ int main(int argc, char** argv) {
   } else {
     goto usage;
   }
-  
-  std::cout << "# entry count: " << que.entryCount() << std::endl;
 
   return 0;
 }

@@ -189,6 +189,7 @@ namespace imque {
       }
       
       // 参照カウントを減らす。カウントが0(= 解放可能)なら true を返す。
+      // release() メソッドの中で呼び出されるので、通常はクライアントコードで明示的に呼ばれることはない。
       bool undup(uint32_t md) {
         Descriptor desc = Descriptor::decode(md);
         

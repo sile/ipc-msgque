@@ -255,7 +255,7 @@ void parent_start(const Param& param, imque::Queue& que) {
 }
 
 int main(int argc, char** argv) {
-  if(argc != 12) {
+  if(argc != 11) {
     std::cerr << "Usage: msgque-test READER_COUNT READER_LOOP_COUNT READ_INTERVAL(μs) WRITER_COUNT WRITER_LOOP_COUNT WRITE_INTERVAL(μs) MESSAGE_SIZE_MIN MESSAGE_SIZSE_MAX SHM_SIZE KILL_NUM" << std::endl;
     return 1;
   }

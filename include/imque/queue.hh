@@ -12,7 +12,7 @@ namespace imque {
   class Queue {
   public:
     // 親子プロセス間で共有可能な無名キューを作成する
-    // shm_size は共有メモリ領域のサイズ
+    // shm_size は共有メモリ領域のサイズ (最大約256MB)
     Queue(size_t shm_size)
       : shm_(shm_size),
         impl_(shm_) {
@@ -20,7 +20,7 @@ namespace imque {
     }
       
     // 複数プロセス間で共有可能な名前付きキューを作成する
-    // shm_size は共有メモリ領域のサイズ
+    // shm_size は共有メモリ領域のサイズ (最大約256MB)
     // filepath は共有メモリのマッピングに使用するファイルのパス
     Queue(size_t shm_size, const std::string& filepath, mode_t mode=0660)
       : shm_(filepath, shm_size, mode),
@@ -51,7 +51,7 @@ namespace imque {
     bool deq(std::string& data) { return impl_.deq(data); }
 
     // キューが空なら true を返す
-    bool isEmpty() const { return impl_.isEmpty(); }
+    bool isEmpty() { return impl_.isEmpty(); }
     
     // キューへの要素追加に失敗した回数を返す
     size_t overflowedCount() const { return impl_.overflowedCount(); }

@@ -10,7 +10,7 @@
 
 namespace imque {
   namespace queue {
-    static const char MAGIC[] = "IMQUE-0.0.5";
+    static const char MAGIC[] = "IMQUE-0.1.0";
 
     // FIFOキュー
     class QueueImpl {
@@ -22,20 +22,43 @@ namespace imque {
         static const uint32_t END = 0;
       };
 
-      struct Stat {
-        uint32_t overflowed_count;
-      };
-
       struct Header {
         char magic[sizeof(MAGIC)];
         uint32_t shm_size;
 
-        volatile uint32_t head;
+        volatile uint32_t head;  // NOTE: mdを保持。md自体がABA対策がなされているので、ここではそれ用のフィールドは不要。
         volatile uint32_t tail;
         
-        Stat stat;
+        uint32_t overflowed_count;
       };
       static const uint32_t HEADER_SIZE = sizeof(Header);
+
+      // 参照カウント周りの処理隠蔽用のクラス
+      class NodeRef {
+      public:
+        NodeRef(uint32_t md, allocator::FixedAllocator& alc) 
+          : alc_(alc), md_(0) {
+          if(alc.dup(md)) { // 既に解放されている可能性もあるのでチェックする
+            md_ = md;
+          }
+        }
+        
+        ~NodeRef() {
+          if(md_) {
+            alc_.release(md_);
+          }
+        }
+
+        operator bool() const { return md_ != 0; }
+
+        Node node_copy() const { return atomic::fetch(alc_.ptr<Node>(md_)); }
+        uint32_t& node_next() { return alc_.ptr<Node>(md_)->next; }
+        uint32_t md() const { return md_; }
+        
+      private:
+        allocator::FixedAllocator& alc_;
+        uint32_t md_;
+      };
 
     public:
       QueueImpl(ipc::SharedMemory& shm)
@@ -44,7 +67,7 @@ namespace imque {
           alc_(shm.ptr<void>(HEADER_SIZE), std::max(0, static_cast<int32_t>(shm.size() - HEADER_SIZE))) {
       }
 
-      operator bool() const { return que_ != NULL && alc_; }
+      operator bool() const { return alc_ && que_; }
     
       // 初期化メソッド。
       // コンストラクタに渡した一つの shm につき、一回呼び出す必要がある。
@@ -52,19 +75,22 @@ namespace imque {
         if(*this) {
           alc_.init();
       
+          uint32_t sentinel = alc_.allocate(sizeof(Node));
+          if(sentinel == 0) {
+            que_ = NULL;
+            return;
+          }
+
           memcpy(que_->magic, MAGIC, sizeof(MAGIC));
           que_->shm_size = shm_size_;
           
-          uint32_t md = alc_.allocate(sizeof(Node)); // XXX: 失敗時の処理
-          assert(md != 0);
+          alc_.ptr<Node>(sentinel)->next = Node::END;
           
-          alc_.ptr<Node>(md)->next = Node::END;
-          
-          que_->head = md;
-          que_->tail = md;
-          alc_.dup(md);
+          que_->head = sentinel;
+          que_->tail = sentinel;
+          assert(alc_.dup(sentinel)); // head と tail の二箇所から参照されているので、参照カウントを一つ増やしておく
 
-          que_->stat.overflowed_count = 0;
+          que_->overflowed_count = 0;
         }
       }
 
@@ -89,27 +115,24 @@ namespace imque {
         for(size_t i=0; i < count; i++) {
           total_size += sizev[i];
         }
-        uint32_t alloc_id = alc_.allocate(sizeof(Node) + total_size);
-        if(alloc_id == 0) {
-          atomic::add(&que_->stat.overflowed_count, 1);
+        
+        uint32_t md = alc_.allocate(sizeof(Node) + total_size); // md = memory descriptor
+        if(md == 0) {
+          atomic::add(&que_->overflowed_count, 1);
           return false;
         }
 
-        Node* node = alc_.ptr<Node>(alloc_id);
+        Node* node = alc_.ptr<Node>(md);
         node->next = Node::END;
         node->data_size = total_size;
 
         size_t offset = sizeof(Node);
         for(size_t i=0; i < count; i++) {
-          memcpy(alc_.ptr<void>(alloc_id, offset), datav[i], sizev[i]);
+          memcpy(alc_.ptr<void>(md, offset), datav[i], sizev[i]);
           offset += sizev[i];
         }
 
-        //std::cout << "in tail: " << que_->tail << ", " << alloc_id << std::endl;
-
-        enqImpl(alloc_id);
-        //std::cout << "tail: " << que_->tail << std::endl;
-      
+        enqImpl(md);
         return true;
       }
 
@@ -124,64 +147,45 @@ namespace imque {
         buf.assign(node->data, node->data_size);
       
         assert(alc_.release(md));
-        //std::cout << "tail: " << que_->tail << std::endl;
-      
         return true;
       }
+      
+      // キューが空かどうか
+      bool isEmpty() {
+        for(;;) {
+          NodeRef head_ref(que_->head, alc_);
+          if(! head_ref) {
+            continue; 
+          }
 
-      bool isEmpty() const { return que_->head == que_->tail; } // XXX: 不正確 (両者はズレる可能性あり)。もしバージョンを導入するなら、その比較を行った方が正確
+          return head_ref.node_copy().next == Node::END;
+        }
+      }
 
       // キューへの要素追加に失敗した回数を返す
-      size_t overflowedCount() const { return que_->stat.overflowed_count; }
-      void resetOverflowedCount() { que_->stat.overflowed_count = 0; }
-
-      class RefPtr {
-      public:
-        RefPtr(uint32_t md, allocator::FixedAllocator& alc) 
-          : alc_(alc),
-            md_(0) {
-          if(alc.dup(md)) {
-            md_ = md;
-          }
-        }
-        
-        ~RefPtr() {
-          if(md_) {
-            alc_.release(md_);
-          }
-        }
-
-        operator bool() const { return md_ != 0; }
-
-        Node* ptr() { return alc_.ptr<Node>(md_); }
-        uint32_t md() const { return md_; }
-        
-      private:
-        allocator::FixedAllocator& alc_;
-        uint32_t md_;
-      };
+      size_t overflowedCount() const { return que_->overflowed_count; }
+      void resetOverflowedCount() { que_->overflowed_count = 0; }
 
     private:
       void enqImpl(uint32_t new_tail) {
-        assert(alc_.dup(new_tail, 2)); // headへの追加用: XXX: 場所
+        assert(alc_.dup(new_tail, 2)); // head と tail からの参照分を始めにカウントしておく
 
         for(;;) {
-          RefPtr tail(que_->tail, alc_);
-
-          if(! tail) {
-            // assert(false);
+          NodeRef tail_ref(que_->tail, alc_);
+          if(! tail_ref) {
             continue;
           }
 
-          Node node = atomic::fetch(tail.ptr());
+          Node node = tail_ref.node_copy();
           if(node.next != Node::END) {
-            if(atomic::compare_and_swap(&que_->tail, tail.md(), node.next)) {
-              alc_.release(tail.md());
+            // tail が末尾を指していないので、一つ前に進める
+            if(atomic::compare_and_swap(&que_->tail, tail_ref.md(), node.next)) {
+              alc_.release(tail_ref.md());
             } 
             continue;
           }
 
-          if(atomic::compare_and_swap(&tail.ptr()->next, node.next, new_tail)) {
+          if(atomic::compare_and_swap(&tail_ref.node_next(), node.next, new_tail)) {
             break;
           }
         }
@@ -189,25 +193,25 @@ namespace imque {
 
       uint32_t deqImpl() {
         for(;;) {
-          RefPtr head(que_->head, alc_);
-          if(! head) {
+          NodeRef head_ref(que_->head, alc_);
+          if(! head_ref) {
             continue;
           }
 
-          Node node = atomic::fetch(head.ptr());
+          Node node = head_ref.node_copy();
           if(node.next == Node::END) {
             return 0;
           }
 
-          if(atomic::compare_and_swap(&que_->head, head.md(), node.next)) {
-            alc_.release(head.md());
+          if(atomic::compare_and_swap(&que_->head, head_ref.md(), node.next)) {
+            alc_.release(head_ref.md());
             return node.next;
           }
         }
       }
 
     private:
-      const uint32_t shm_size_;    // for check
+      const uint32_t shm_size_; 
 
       Header* que_;
       allocator::FixedAllocator alc_;
