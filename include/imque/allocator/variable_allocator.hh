@@ -1,6 +1,6 @@
 #ifndef IMQUE_ALLOCATOR_VARIABLE_ALLOCATOR_HH
 #define IMQUE_ALLOCATOR_VARIABLE_ALLOCATOR_HH
-#include <iostream> // XXX: for debug
+
 #include "../atomic/atomic.hh"
 #include <cassert>
 #include <inttypes.h>
@@ -10,10 +10,14 @@ namespace imque {
     namespace VariableAllocatorAux {
       struct Node {
         uint32_t version:10; // tag for ABA problem
-        uint32_t next:22;   // index of next Node
-        uint32_t count:30;  // avaiable Chunk count
-        uint32_t status:2;
+        uint32_t next:22;    // index of next Node
+        uint32_t count:24;   // avaiable Chunk count
+        uint32_t status:8;
         
+        // nextフィールドは参照カウント用にも使用される
+        uint32_t refCount() const { return next; }
+        void setRefCount(uint32_t ref_count) { next = ref_count; }
+
         enum STATUS {
           AVAILABLE = 0,
           JOIN_HEAD = 1, 
@@ -41,23 +45,17 @@ namespace imque {
       };
 
       struct Descriptor {
-        Descriptor(uint32_t encoded_val) 
-          : version(encoded_val >> 22),
-            index(encoded_val & 0x3FFFFF) {
-        }
-
-        static uint32_t encode(uint32_t version, uint32_t index) {
-          return (version << 22) + index;
-        }
-          
         uint32_t version:10; // tag for ABA problem
-        uint32_t index:22;  // index of next Node   
+        uint32_t index:22;   // allocated node index
+
+        uint32_t encode() const { return atomic::cast<Descriptor, uint32_t>(*this); }
+        static Descriptor decode(uint32_t v) { return atomic::cast<uint32_t, Descriptor>(v); }
       };
     }
     
     
     // ロックフリーな可変長ブロックアロケータ。
-    // 一つのインスタンスで(実際に)割当可能なメモリ領域の最大長は sizeof(Chunk)*NODE_COUNT_LIMIT = 512MB
+    // 一つのインスタンスで(実際に)割当可能なメモリ領域の最大長は sizeof(Chunk)*NODE_COUNT_LIMIT = 256MB
     class VariableAllocator {
       typedef VariableAllocatorAux::Node Node;
       typedef atomic::Snapshot<Node> NodeSnapshot;
@@ -65,8 +63,8 @@ namespace imque {
       typedef VariableAllocatorAux::Descriptor Descriptor;
       
       static const int RETRY_LIMIT = 32;
-      static const int FAST_RETRY_LIMIT = 1;
-      static const uint32_t NODE_COUNT_LIMIT = 0x1000000; // 24bit
+      static const int LIGHT_RETRY_LIMIT = 1;
+      static const uint32_t NODE_COUNT_LIMIT = 0x400000; // 22bit
 
     public:
       // region: 割当に使用するメモリ領域。
@@ -101,9 +99,6 @@ namespace imque {
       // (識別子を ptrメソッド に渡すことで、実際のメモリ領域を参照可能)
       //
       // メモリ割当は、領域不足以外に、極めて高い競合下で楽観的ロックの試行回数(RETRY_LIMIT)を越えた場合にも失敗する。
-      //
-      // このメソッドが返す識別子の値は NODE_COUNT_LIMIT 未満の値(= 24bitに収まる値)であることが保証されている。
-      // ※ つまり、呼び出し側は、上位8bitが0bitであることを前提にしたコードを書くことができる
       uint32_t allocate(uint32_t size) {
         if(size == 0) {
           return 0; // invalid argument
@@ -121,62 +116,88 @@ namespace imque {
           return allocate(size);
         }
       
-        uint32_t allocated_node_index = index(cand) + new_count; // memory descriptor
-        uint32_t ver = nodes_[allocated_node_index].version;
-        nodes_[allocated_node_index] = cand.node().changeCount(need_chunk_count);
-        nodes_[allocated_node_index].version = ver+1;
-        nodes_[allocated_node_index].next = 1; // XXX: 参照カウント実験
-        return Descriptor::encode(nodes_[allocated_node_index].version, allocated_node_index);
+        uint32_t allocated_node_index = index(cand) + new_count; 
+        Node& node = nodes_[allocated_node_index];
+        node.version++;
+        node.count = need_chunk_count;
+        node.setRefCount(1);
+
+        Descriptor desc = {node.version, allocated_node_index}; // memory descriptor
+        return desc.encode();
       }
 
-      uint32_t getSize(uint32_t md) {
-        return nodes_[Descriptor(md).index].count * sizeof(Chunk);
+      // allocateメソッドで割り当てたメモリ領域を解放する。(解放に成功した場合は trueを、失敗した場合は false を返す)
+      // md(メモリ記述子)が 0 の場合は何も行わない。
+      //
+      // メモリ解放は、極めて高い競合下で楽観的ロックの試行回数(RETRY_LIMIT)を越えた場合に失敗することがある。
+      // ※ ベンチマーク的なプログラムを除き、通常の使用途ではまず失敗しないはず
+      bool release(uint32_t md) {
+        if(! undup(md)) {
+          return true; // まだ誰かが参照中の場合は解放しない場合は
+        }
+        return releaseImpl(md, RETRY_LIMIT, false);
       }
       
+      // 楽観的ロック失敗時の試行回数が少ない以外は releaseメソッド と同様。
+      bool lightRelease(uint32_t md) {
+        if(! undup(md)) {
+          return true; // まだ誰かが参照中の場合は解放しない場合は
+        }
+        return releaseImpl(md, LIGHT_RETRY_LIMIT, true);
+      }
+
+      // 割当領域のサイズ(バイト数)を返す
+      uint32_t getSize(uint32_t md) {
+        return nodes_[Descriptor::decode(md).index].count * sizeof(Chunk);
+      }
+      
+      // 割当領域の参照カウントを増やす
       bool dup(uint32_t md, uint32_t delta=1) {
-        Descriptor desc(md);
+        Descriptor desc = Descriptor::decode(md);
 
         for(;;) {
           NodeSnapshot snap(nodes_ + desc.index);
           Node node = snap.node();
-          if(node.version != desc.version ||
-             node.next == 0) {
+          if(node.version != desc.version || node.refCount() == 0) {
+            // 既に解放済み
             return false;
           }
 
-          node.next += delta; // XXX: ref count
+          node.setRefCount(node.refCount() + delta);
           if(snap.compare_and_swap(node)) {
             return true;
           }
         }
       }
 
+      // 解放可能(参照カウントが0)の割当領域を再利用する。
+      // 返り値は、新しいメモリ記述子。
       uint32_t dupNew(uint32_t md) {
-        Descriptor desc(md);
+        Descriptor desc = Descriptor::decode(md);
 
-        for(;;) {
-          NodeSnapshot snap(nodes_ + desc.index);
-          Node node = snap.node();
-          
-          // assert(node.version == desc.version);
-          
-          node.version++;
-          node.next = 1; // XXX: ref count
-          if(snap.compare_and_swap(node)) {
-            return Descriptor::encode(node.version, index(snap));
-          }
-        }
+        NodeSnapshot snap(nodes_ + desc.index);
+        Node node = snap.node();
+        assert(node.version == desc.version);
+        assert(node.refCount() == 0);
+
+        node.version++;
+        node.setRefCount(1);
+        assert(snap.compare_and_swap(node)); // 他と競合するような使い方をしてはいけない
+
+        desc.version++;
+        return desc.encode();
       }
-
+      
+      // 参照カウントを減らす。カウントが0(= 解放可能)なら true を返す。
       bool undup(uint32_t md) {
-        Descriptor desc(md);
+        Descriptor desc = Descriptor::decode(md);
         
         for(;;) {
           NodeSnapshot snap(nodes_ + desc.index);
           Node node = snap.node();
           assert(node.version == desc.version);
           
-          if(node.next == 0) { // XXX: FixedAllocatorとの関係で今はここに来ることもある
+          if(node.next == 0) {
             return true;
           }
 
@@ -187,28 +208,9 @@ namespace imque {
         }
       }
 
-      // allocateメソッドで割り当てたメモリ領域を解放する。(解放に成功した場合は trueを、失敗した場合は false を返す)
-      // md(メモリ記述子)が 0 の場合は何も行わない。
-      //
-      // メモリ解放は、極めて高い競合下で楽観的ロックの試行回数(RETRY_LIMIT)を越えた場合に失敗することがある。
-      bool release(uint32_t md) { // TODO: こっちは失敗しないようにしても良い(backoffとかと組み合わせて)
-        if(! undup(md)) {
-          return true;
-        }
-        return releaseImpl(md, RETRY_LIMIT, false);
-      }
-      
-      // 楽観的ロック失敗時の試行回数が少ない以外は releaseメソッド と同様。
-      bool fastRelease(uint32_t md) { // TODO: tryReleaseとかに変更?
-        if(! undup(md)) {
-          return true;
-        }
-        return releaseImpl(md, FAST_RETRY_LIMIT, true);
-      }
-
       // allocateメソッドが返したメモリ記述子から、対応する実際にメモリ領域を取得する
       template<typename T>
-      T* ptr(uint32_t md) const { return reinterpret_cast<T*>(chunks_ + Descriptor(md).index); }
+      T* ptr(uint32_t md) const { return reinterpret_cast<T*>(chunks_ + Descriptor::decode(md).index); }
 
       template<typename T>
       T* ptr(uint32_t md, uint32_t offset) const { return reinterpret_cast<T*>(ptr<char>(md)+offset); }
@@ -315,12 +317,11 @@ namespace imque {
       }
 
       bool releaseImpl(uint32_t md, int retry_limit, bool fast) {
-        if(md == 0) { // || desc.index >= node_count_) {
-          //assert(md < node_count_);
+        if(md == 0) {
           return true;
         }
 
-        Descriptor desc(md);
+        Descriptor desc = Descriptor::decode(md);
 
         uint32_t node_index = desc.index;
         NodeSnapshot pred;
@@ -334,6 +335,9 @@ namespace imque {
         assert(node_index >= index(pred)+pred.node().count);
 
         Node* node = &nodes_[node_index];
+        assert(node->version == desc.version);
+        assert(node->refCount() == 0);
+
         Node new_pred_node;
         bool is_neighbor = node_index == index(pred)+pred.node().count;
         if(is_neighbor) {
@@ -341,12 +345,15 @@ namespace imque {
           new_pred_node = pred.node().changeCount(pred.node().count + node->count);
         } else {
           new_pred_node = pred.node().changeNext(node_index);
-          node->version = desc.version + 1; // XXX:
           node->next = pred.node().next;
           node->status = Node::AVAILABLE;
         }
+        node->version++;
       
         if(pred.compare_and_swap(new_pred_node) == false) {
+          node->version--;
+          node->setRefCount(0);
+          
           return fast ? false : releaseImpl(md, retry_limit, fast);
         }
       

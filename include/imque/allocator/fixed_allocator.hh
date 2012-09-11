@@ -130,7 +130,7 @@ namespace imque {
 
         // キャッシュに溜めておく必要がないなら、ブロックを解放する
         if(sb.used_count < sb.free_count &&
-           base_alc_.fastRelease(base_md)) {
+           base_alc_.lightRelease(base_md)) {
           atomic::sub(&sb.used_count, 1);
           return true;
         }

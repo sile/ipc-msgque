@@ -7,7 +7,7 @@
 * プロジェクトページ: https://github.com/sile/ipc-msgque
 
 ## バージョン
-* 0.0.5
+* 0.1.0
 
 ## 対応環境
 * gccのver4.1以上
@@ -30,11 +30,11 @@ namespace imque {
   class Queue {
   public:
     // 親子プロセス間で共有可能なキューを作成する
-    // shm_size は共有メモリ領域のサイズ
+    // shm_size は共有メモリ領域のサイズ (最大約256MB)
     Queue(size_t entry_count, size_t shm_size);
       
     // 複数プロセス間で共有可能なキューを作成する 
-    // shm_size は共有メモリ領域のサイズ
+    // shm_size は共有メモリ領域のサイズ (最大約256MB)
     // filepath は共有メモリのマッピングに使用するファイルのパス
     Queue(size_t entry_count, size_t shm_size, const std::string& filepath, mode_t mode=0660);
 

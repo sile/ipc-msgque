@@ -30,7 +30,6 @@ namespace imque {
       // From == To 用
       template<typename T>
       T union_conv(T v) { return v; }
-
       
       // 型のサイズに対応する uintXXX_t 型にマッピングする
       template<int SIZE> struct SizeToType {};
@@ -40,6 +39,11 @@ namespace imque {
       template<> struct SizeToType<8> { typedef uint64_t TYPE; };
     }
 
+    // TODO: 場所移動
+    template<typename From, typename To>
+    To cast(From v) { return union_conv<From,To>(v); }
+    
+    // 各種アトミック命令
     template<typename T, typename T2>
     bool compare_and_swap(T* place, T2 old_value, T2 new_value) {
       typedef typename SizeToType<sizeof(T)>::TYPE uint;
@@ -48,7 +52,6 @@ namespace imque {
                                           union_conv<T2, uint>(new_value));
     }
     
-    // 各種アトミック命令
     template<typename T>
     T fetch_and_add(T* place, int delta) {
       typedef typename SizeToType<sizeof(T)>::TYPE uint;
