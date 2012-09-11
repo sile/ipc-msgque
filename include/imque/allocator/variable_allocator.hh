@@ -9,16 +9,15 @@ namespace imque {
   namespace allocator {
     namespace VariableAllocatorAux {
       struct Node {
-        uint32_t version:8; // tag for ABA problem
-        uint32_t next:24;   // index of next Node
+        uint32_t version:10; // tag for ABA problem
+        uint32_t next:22;   // index of next Node
         uint32_t count:30;  // avaiable Chunk count
         uint32_t status:2;
         
         enum STATUS {
           AVAILABLE = 0,
           JOIN_HEAD = 1, 
-          JOIN_TAIL = 2,
-          ALLOCATED = 3
+          JOIN_TAIL = 2
         };
         
         bool isAvaiable() const { return status == AVAILABLE; }
@@ -43,16 +42,16 @@ namespace imque {
 
       struct Descriptor {
         Descriptor(uint32_t encoded_val) 
-          : version(encoded_val >> 24),
-            index(encoded_val & 0xFFFFFF) {
+          : version(encoded_val >> 22),
+            index(encoded_val & 0x3FFFFF) {
         }
 
         static uint32_t encode(uint32_t version, uint32_t index) {
-          return (version << 24) + index;
+          return (version << 22) + index;
         }
           
-        uint32_t version:8; // tag for ABA problem
-        uint32_t index:24;  // index of next Node   
+        uint32_t version:10; // tag for ABA problem
+        uint32_t index:22;  // index of next Node   
       };
     }
     
@@ -84,6 +83,9 @@ namespace imque {
       // コンストラクタに渡した region につき一回呼び出す必要がある。
       void init() {
         if(*this) {
+          assert(sizeof(Descriptor) == 4);
+          assert(sizeof(Node) == 8);
+
           nodes_[0].next   = 1;
           nodes_[0].count  = 0;
           nodes_[0].status = Node::AVAILABLE;
@@ -124,7 +126,6 @@ namespace imque {
         nodes_[allocated_node_index] = cand.node().changeCount(need_chunk_count);
         nodes_[allocated_node_index].version = ver+1;
         nodes_[allocated_node_index].next = 1; // XXX: 参照カウント実験
-        nodes_[allocated_node_index].status = Node::ALLOCATED;
         return Descriptor::encode(nodes_[allocated_node_index].version, allocated_node_index);
       }
 
@@ -139,7 +140,6 @@ namespace imque {
           NodeSnapshot snap(nodes_ + desc.index);
           Node node = snap.node();
           if(node.version != desc.version ||
-             node.status != Node::ALLOCATED ||
              node.next == 0) {
             return false;
           }
@@ -166,7 +166,6 @@ namespace imque {
           
           node.version++;
           node.next = 1; // XXX: ref count
-          node.status = Node::ALLOCATED;
           if(snap.compare_and_swap(node)) {
             return Descriptor::encode(node.version, index(snap));
           }
@@ -179,8 +178,7 @@ namespace imque {
         for(;;) {
           NodeSnapshot snap(nodes_ + desc.index);
           Node node = snap.node();
-          assert(node.status == Node::ALLOCATED &&
-                 node.version == desc.version);
+          assert(node.version == desc.version);
           
           if(node.next == 0) { // XXX: FixedAllocatorとの関係で今はここに来ることもある
             return true;
