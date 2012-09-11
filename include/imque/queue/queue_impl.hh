@@ -6,6 +6,7 @@
 #include "../allocator/fixed_allocator.hh"
 #include <inttypes.h>
 #include <string.h>
+#include <algorithm>
 
 namespace imque {
   namespace queue {
@@ -34,13 +35,13 @@ namespace imque {
         
         Stat stat;
       };
+      static const uint32_t HEADER_SIZE = sizeof(Header);
 
     public:
-      QueueImpl(size_t entry_limit, ipc::SharedMemory& shm)
+      QueueImpl(ipc::SharedMemory& shm)
         : shm_size_(shm.size()),
           que_(shm.ptr<Header>()),
-          alc_(shm.ptr<void>(queSize(entry_limit)),
-               shm.size() > queSize(entry_limit) ?  shm.size() - queSize(entry_limit) : 0) {
+          alc_(shm.ptr<void>(HEADER_SIZE), std::max(0, static_cast<int32_t>(shm.size() - HEADER_SIZE))) {
       }
 
       operator bool() const { return que_ != NULL && alc_; }
@@ -130,9 +131,6 @@ namespace imque {
 
       bool isEmpty() const { return que_->head == que_->tail; } // XXX: 不正確 (両者はズレる可能性あり)。もしバージョンを導入するなら、その比較を行った方が正確
 
-      bool isFull()  const { return false; }   // XXX: dummy
-      size_t entryCount() const { return 10; } // XXX: dummy
-      
       // キューへの要素追加に失敗した回数を返す
       size_t overflowedCount() const { return que_->stat.overflowed_count; }
       void resetOverflowedCount() { que_->stat.overflowed_count = 0; }
@@ -206,10 +204,6 @@ namespace imque {
             return node.next;
           }
         }
-      }
-
-      static size_t queSize(size_t entry_limit) {
-        return sizeof(Header);
       }
 
     private:

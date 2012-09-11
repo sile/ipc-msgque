@@ -27,7 +27,6 @@ struct Param {
   
   int msg_size_min;
   int msg_size_max;
-  int que_entry_count;
   int shm_size;
   int kill_num;
 };
@@ -257,7 +256,7 @@ void parent_start(const Param& param, imque::Queue& que) {
 
 int main(int argc, char** argv) {
   if(argc != 12) {
-    std::cerr << "Usage: msgque-test READER_COUNT READER_LOOP_COUNT READ_INTERVAL(μs) WRITER_COUNT WRITER_LOOP_COUNT WRITE_INTERVAL(μs) MESSAGE_SIZE_MIN MESSAGE_SIZSE_MAX QUEUE_ENTRY_COUNT SHM_SIZE KILL_NUM" << std::endl;
+    std::cerr << "Usage: msgque-test READER_COUNT READER_LOOP_COUNT READ_INTERVAL(μs) WRITER_COUNT WRITER_LOOP_COUNT WRITE_INTERVAL(μs) MESSAGE_SIZE_MIN MESSAGE_SIZSE_MAX SHM_SIZE KILL_NUM" << std::endl;
     return 1;
   }
 
@@ -271,11 +270,10 @@ int main(int argc, char** argv) {
     atoi(argv[7]),
     atoi(argv[8]),
     atoi(argv[9]),
-    atoi(argv[10]),
-    atoi(argv[11])
+    atoi(argv[10])
   };
 
-  imque::Queue que(param.que_entry_count, param.shm_size);
+  imque::Queue que(param.shm_size);
   que.init();
   
   if(! que) {
