@@ -10,7 +10,7 @@
 
 namespace imque {
   namespace queue {
-    static const char MAGIC[] = "IMQUE-0.1.0";
+    static const char MAGIC[] = "IMQUE-0.1.1";
 
     // FIFOキュー
     class QueueImpl {
@@ -164,7 +164,9 @@ namespace imque {
 
       // キューへの要素追加に失敗した回数を返す
       size_t overflowedCount() const { return que_->overflowed_count; }
-      void resetOverflowedCount() { que_->overflowed_count = 0; }
+      size_t resetOverflowedCount() { 
+        return atomic::fetch_and_clear(&que_->overflowed_count);
+      }
 
     private:
       void enqImpl(uint32_t new_tail) {

@@ -56,8 +56,8 @@ namespace imque {
     // キューへの要素追加に失敗した回数を返す
     size_t overflowedCount() const { return impl_.overflowedCount(); }
 
-    // 要素追加に失敗した回数カウントを初期化する
-    void resetOverflowedCount() { impl_.resetOverflowedCount(); }
+    // キューへの要素追加失敗回数の取得と、カウントの初期化をアトミックに行う。
+    size_t resetOverflowedCount() { return impl_.resetOverflowedCount(); }
 
   private:
     ipc::SharedMemory shm_;
