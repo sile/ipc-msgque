@@ -8,7 +8,7 @@
 * プロジェクトページ: https://github.com/sile/ipc-msgque
 
 ## バージョン
-* 0.1.0
+* 0.1.1
 
 ## 対応環境
 * gccのver4.1以上
@@ -62,8 +62,8 @@ namespace imque {
     // キューへの要素追加に失敗した回数を返す
     size_t overflowedCount() const;
 
-    // 要素追加に失敗した回数カウントを初期化する
-    void resetOverflowedCount();
+    // キューへの要素追加失敗回数の取得と、カウントの初期化をアトミックに行う。
+    size_t resetOverflowedCount() { return impl_.resetOverflowedCount(); }
   };
 }
 ```
