@@ -1,7 +1,7 @@
 CPPFLAGS+=-Wall
 CPPFLAGS+=-Werror
 
-all: msgque-test allocator-test anonymous-sample
+all: msgque-test allocator-test anonymous-sample named-sample
 
 allocator-test:
 	mkdir -p bin
@@ -14,6 +14,10 @@ msgque-test:
 anonymous-sample:
 	mkdir -p bin
 	g++ -Iinclude ${CPPFLAGS} -O2 -o bin/anonymous-sample src/bin/anonymous-sample.cc
+
+named-sample:
+	mkdir -p bin
+	g++ -Iinclude ${CPPFLAGS} -O2 -o bin/named-sample src/bin/named-sample.cc
 
 
 mac: msgque-test-mac allocator-test-mac
