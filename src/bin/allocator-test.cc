@@ -107,12 +107,13 @@ void parent_start(Allocator& alc, const Parameter& param) {
   
   srand(time(NULL) + getpid());
   for(int i=0; i < param.kill_num; i++) {
-    kill(children[rand() % children.size()], 9);
+    kill(children[rand() % children.size()], SIGKILL);
     usleep(rand() % 1000);
   }
 
   int exit_num=0;
   int signal_num=0;
+  int sigkill_num=0;
   int unknown_num=0;
   for(int i=0; i < param.process_count; i++) {
     int status;
@@ -120,7 +121,11 @@ void parent_start(Allocator& alc, const Parameter& param) {
     if(WIFEXITED(status)) {
       exit_num++;
     } else if(WIFSIGNALED(status)) {
-      signal_num++;
+      if(WTERMSIG(status) == SIGKILL) {
+        sigkill_num++;
+      } else {
+        signal_num++; 
+      }
     } else {
       unknown_num++;
     }
@@ -128,7 +133,8 @@ void parent_start(Allocator& alc, const Parameter& param) {
 
   std::cout << "#[" << getpid() << "] P FINISH: " 
             << "exit=" << exit_num << ", " 
-            << "signal=" << signal_num << ", "
+            << "killed=" << sigkill_num << ", "
+            << "abort=" << signal_num << ", "
             << "unknown=" << unknown_num << std::endl;
 }
 
