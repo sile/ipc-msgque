@@ -1,31 +1,21 @@
-CPPFLAGS+=-Wall
-CPPFLAGS+=-Werror
+CPPFLAGS+= -Wall
+CPPFLAGS+= -Werror
+CPPFLAGS+= -O2
 
-all: msgque-test allocator-test anonymous-sample named-sample
+all: sample test
 
-allocator-test:
-	mkdir -p bin
-	g++ -Iinclude ${CPPFLAGS} -O2 -o bin/allocator-test src/bin/allocator-test.cc -lrt
+sample: anonymous-sample named-sample
 
-msgque-test:
-	mkdir -p bin
-	g++ -Iinclude ${CPPFLAGS} -O2 -o bin/msgque-test src/bin/msgque-test.cc -lrt
+test: allocator-test msgque-test
 
 anonymous-sample:
-	mkdir -p bin
-	g++ -Iinclude ${CPPFLAGS} -O2 -o bin/anonymous-sample src/bin/anonymous-sample.cc
+	g++ -Iinclude ${CPPFLAGS} -o bin/${@} src/bin/${@}.cc
 
 named-sample:
-	mkdir -p bin
-	g++ -Iinclude ${CPPFLAGS} -O2 -o bin/named-sample src/bin/named-sample.cc
+	g++ -Iinclude ${CPPFLAGS} -o bin/${@} src/bin/${@}.cc
 
+allocator-test:
+	g++ -Iinclude ${CPPFLAGS} -o bin/${@} src/bin/${@}.cc
 
-mac: msgque-test-mac allocator-test-mac
-
-allocator-test-mac:
-	mkdir -p bin
-	g++ -Iinclude ${CPPFLAGS} -O2 -o bin/allocator-test src/bin/allocator-test.cc
-
-msgque-test-mac:
-	mkdir -p bin
-	g++ -Iinclude ${CPPFLAGS} -O2 -o bin/msgque-test src/bin/msgque-test.cc
+msgque-test:
+	g++ -Iinclude ${CPPFLAGS} -o bin/${@} src/bin/${@}.cc
