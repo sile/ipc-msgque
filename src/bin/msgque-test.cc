@@ -1,5 +1,8 @@
 #include <imque/queue.hh>
 
+#include "../aux/nano_timer.hh"
+#include "../aux/stat.hh"
+
 #include <iostream>
 #include <string>
 #include <vector>
@@ -31,81 +34,6 @@ struct Param {
   int kill_num;
 };
 
-class NanoTimer {
-public:
-  NanoTimer() {
-    gettimeofday(&t, NULL);
-  }
-
-  long elapsed() {
-    timeval now;
-    gettimeofday(&now, NULL);
-    return ns(now) - ns(t);
-  }
-
-  long ns(const timeval& ts) {
-    return static_cast<long>(static_cast<long long>(ts.tv_sec)*1000*1000*1000 + ts.tv_usec*1000);
-  }
-
-private:
-  timeval t;
-};
-
-struct Stat {
-  Stat(unsigned loop_count) 
-    : loop_count(loop_count),
-      ok_count(0),
-      times(loop_count,-1) {
-  }
-  
-  const unsigned loop_count;
-  unsigned ok_count;
-  std::vector<long> times;
-};
-
-long calc_average(const std::vector<long>& ary) {
-  long long sum = 0;
-  long count = 0;
-  for(std::size_t i=0; i < ary.size(); i++) {
-    if(ary[i] != -1) {
-      sum += ary[i];
-      count++;
-    }
-  }
-  return static_cast<long>(sum / count);
-}
-
-long calc_max(const std::vector<long>& ary) {
-  long max = ary[0];
-  for(std::size_t i=1; i < ary.size(); i++) 
-    if(ary[i] != -1 && max < ary[i])
-      max = ary[i];
-  return max;
-}
-
-long calc_min(const std::vector<long>& ary) {
-  long min = ary[0];
-  if(min == -1)
-    min = static_cast<long>(0xFFFFFFFF);
-  for(std::size_t i=1; i < ary.size(); i++)
-    if(ary[i] != -1 && ary[i] < min)
-      min = ary[i];
-  return min;
-}
-  
-long calc_standard_deviation(const std::vector<long>& ary) {
-  long avg = calc_average(ary);
-  long long sum = 0;
-  long count = 0;
-  for(std::size_t i=1; i < ary.size(); i++) {
-    if(ary[i] != -1) {
-      sum += static_cast<long>(pow(ary[i] - avg, 2));
-      count++;
-    }
-  }
-  return static_cast<long>(sqrt(sum / count));
-}
-
 void gen_random_string(std::string& s, std::size_t size) {
   const char cs[] = "0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ";
   s.resize(size);
@@ -117,57 +45,49 @@ void gen_random_string(std::string& s, std::size_t size) {
 void reader_start(const Param& param, imque::Queue& que) {
   srand(time(NULL) + getpid());
   
-  Stat st(param.reader_loop_count);
+  imque::Stat ok_st;
+  imque::Stat ng_st;
   std::string buf;
   for(int i=0; i < param.reader_loop_count; i++) {
-    NanoTimer t1;
-    if(que.deq(buf)) {
-      st.times[i] = t1.elapsed();
-      st.ok_count++;
-    }
+    imque::NanoTimer t;
+    que.deq(buf) ? ok_st.add(t.elapsed()) : ng_st.add(t.elapsed());
     
     if(param.read_interval)
       usleep(rand() % param.read_interval);
   }
 
-  std::cout << "#[" << getpid() << "] R: " 
-            << "ok=" << st.ok_count << ", "
-            << "avg=" << calc_average(st.times) << ", "
-            << "min=" << calc_min(st.times) << ", "
-            << "max=" << calc_max(st.times) << ", "
-            << "sd=" << calc_standard_deviation(st.times)
+  std::cout << "#[" << getpid() << "] R FINISH: " 
+            << "ok=" << ok_st.count() << ", "
+            << "ok_avg=" << ok_st.avg() << ", "
+            << "ng_avg=" << ng_st.avg()
             << std::endl;
 }
 
 void writer_start(const Param& param, imque::Queue& que) {
   srand(time(NULL) + getpid());
   
-  Stat st(param.writer_loop_count);
-  int size_range = param.msg_size_max - param.msg_size_min;
+  imque::Stat ok_st;
+  imque::Stat ng_st;
+  int size_range = param.msg_size_max - param.msg_size_min + 1;
   std::string buf;
   
   for(int i=0; i < param.writer_loop_count; i++) {
     uint32_t size = static_cast<uint32_t>((rand() % size_range) + param.msg_size_min);
     gen_random_string(buf, size);
     
-    NanoTimer t1;
-    if(que.enq(buf.data(), buf.size())) {
-      st.times[i] = t1.elapsed();
-      st.ok_count++;
-    }
+    imque::NanoTimer t;
+    que.enq(buf.data(), buf.size()) ? ok_st.add(t.elapsed()) : ng_st.add(t.elapsed());
     
     if(param.write_interval)
       usleep(rand() % param.write_interval);
   }
 
-  std::cout << "#[" << getpid() << "] W: " 
-            << "ok=" << st.ok_count << ", "
-            << "avg=" << calc_average(st.times) << ", "
-            << "min=" << calc_min(st.times) << ", "
-            << "max=" << calc_max(st.times) << ", "
-            << "sd=" << calc_standard_deviation(st.times)
-            << std::endl;
 
+  std::cout << "#[" << getpid() << "] W FINISH: " 
+            << "ok=" << ok_st.count() << ", "
+            << "ok_avg=" << ok_st.avg() << ", "
+            << "ng_avg=" << ng_st.avg()
+            << std::endl;
 }
 
 void parent_start(const Param& param, imque::Queue& que) {
@@ -228,7 +148,7 @@ void parent_start(const Param& param, imque::Queue& que) {
     }
   }
 
-  std::cout << "#[" << getpid() << "] P: " 
+  std::cout << "#[" << getpid() << "] P FINISH: " 
             << "exit=" << exit_num << ", " 
             << "signal=" << signal_num << ", "
             << "unknown=" << unknown_num << " | " 

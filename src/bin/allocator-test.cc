@@ -8,6 +8,7 @@
 #include <iostream>
 #include <string>
 #include <vector>
+#include <algorithm>
 #include <string.h>
 #include <stdlib.h>
 #include <math.h>
@@ -57,9 +58,9 @@ void child_start(Allocator& alc, const Parameter& param) {
   imque::Stat alc_ng_st;
   imque::Stat rls_ng_st;
   
-  int size_range = param.alloc_size_max-param.alloc_size_min;
+  int size_range = param.alloc_size_max - param.alloc_size_min + 1;
   for(int i=0; i < param.loop_count; i++) {
-    uint32_t size = static_cast<uint32_t>((rand() % std::max(1, size_range)) + param.alloc_size_min);
+    uint32_t size = static_cast<uint32_t>((rand() % size_range) + param.alloc_size_min);
 
     imque::NanoTimer t1;
     typename Descriptor<Allocator>::TYPE md = alc.allocate(size);
