@@ -2,6 +2,9 @@
 #include <imque/allocator/variable_allocator.hh>
 #include <imque/allocator/fixed_allocator.hh>
 
+#include "../aux/nano_timer.hh"
+#include "../aux/stat.hh"
+
 #include <iostream>
 #include <string>
 #include <vector>
@@ -9,7 +12,6 @@
 #include <stdlib.h>
 #include <math.h>
 #include <limits.h>
-
 #include <sys/types.h>
 #include <sys/wait.h>
 #include <unistd.h>
@@ -17,13 +19,12 @@
 #include <inttypes.h>
 #include <time.h>
 #include <signal.h>
-#include <sys/time.h>
 
-// TODO: nice値変動パラメータ追加、計時間隔とか
 struct Parameter {
   std::string method; // "variable" | "fixed" | "malloc"
   int process_count;
   int loop_count;
+  int max_nice;
   int max_hold_micro_sec;
   int alloc_size_min;
   int alloc_size_max;
@@ -31,95 +32,38 @@ struct Parameter {
   int kill_num;
 };
 
-class NanoTimer {
-public:
-  NanoTimer() {
-    gettimeofday(&t, NULL);
-  }
-
-  long elapsed() {
-    timeval now;
-    gettimeofday(&now, NULL);
-    return ns(now) - ns(t);
-  }
-
-  long ns(const timeval& ts) {
-    return static_cast<long>(static_cast<long long>(ts.tv_sec)*1000*1000*1000 + ts.tv_usec*1000);
-  }
-
-private:
-  timeval t;
-};
-
-struct Stat {
-  Stat() : count(0), min(0), max(INT_MAX), total(0) {
-  }
-  
-  void add(int val) {
-    count++;
-    if(min < val) min = val;
-    if(max > val) max = val;
-    total += val;
-  }
-  
-  int avg() const {
-    return static_cast<int>(total / count);
-  }
-
-  int count;
-  int min;
-  int max;
-  long long total;
-};
-
 class MallocAllocator {
 public:
-  void* allocate(uint32_t size) {
-    return malloc(size);
-  }
-
-  bool release(void* descriptor) {
-    free(descriptor);
-    return true;
-  }
+  void* allocate(uint32_t size) { return malloc(size); }
+  bool release(void* descriptor) { free(descriptor); return true; }
 
   template<typename T>
   T* ptr(void* descriptor) { return reinterpret_cast<T*>(descriptor); }
 };
 
-template<typename T>
-struct Descriptor {};
-template<>
-struct Descriptor<imque::allocator::VariableAllocator> {
-  typedef uint32_t TYPE;
-};
-template<>
-struct Descriptor<imque::allocator::FixedAllocator> {
-  typedef uint32_t TYPE;
-};
-template<>
-struct Descriptor<MallocAllocator> {
-  typedef void* TYPE;
-};
-
+template<typename T> struct Descriptor {};
+template<> struct Descriptor<imque::allocator::VariableAllocator> { typedef uint32_t TYPE; };
+template<> struct Descriptor<imque::allocator::FixedAllocator>    { typedef uint32_t TYPE; };
+template<> struct Descriptor<MallocAllocator>                     { typedef void* TYPE; };
 
 template<class Allocator>
 void child_start(Allocator& alc, const Parameter& param) {
   srand(time(NULL) + getpid());
+  int new_nice = nice(rand() % std::max(1, param.max_nice));
+  std::cout << "#[" << getpid() << "] C START: nice=" << new_nice << std::endl;
+
+  imque::Stat alc_ok_st;
+  imque::Stat rls_ok_st;
+  imque::Stat alc_ng_st;
+  imque::Stat rls_ng_st;
   
-  Stat alloc_st;
-  Stat release_st;
-  int alloc_ok_count = 0;
-  int release_ok_count = 0;
   int size_range = param.alloc_size_max-param.alloc_size_min;
   for(int i=0; i < param.loop_count; i++) {
-    uint32_t size = static_cast<uint32_t>((rand() % size_range) + param.alloc_size_min);
+    uint32_t size = static_cast<uint32_t>((rand() % std::max(1, size_range)) + param.alloc_size_min);
 
-    NanoTimer t1;
-    //typename Allocator::DESCRIPTOR_TYPE md = alc.allocate(size);
+    imque::NanoTimer t1;
     typename Descriptor<Allocator>::TYPE md = alc.allocate(size);
-    alloc_st.add(t1.elapsed());
-    alloc_ok_count += md==0 ? 0 : 1;
+    md != 0 ? alc_ok_st.add(t1.elapsed()) : alc_ng_st.add(t1.elapsed());
     
     if(param.max_hold_micro_sec)
       usleep(rand() % param.max_hold_micro_sec);
@@ -127,18 +71,20 @@ void child_start(Allocator& alc, const Parameter& param) {
     if(md != 0) {
       memset(alc.template ptr<void>(md), rand()%0x100, size);
       
-      NanoTimer t2;
+      
+      imque::NanoTimer t2;
       bool ok = alc.release(md); 
-      release_st.add(t2.elapsed());
-      release_ok_count += ok ? 1 : 0;
+      ok ? rls_ok_st.add(t2.elapsed()) : rls_ng_st.add(t2.elapsed());
     }
   }
 
-  std::cout << "#[" << getpid() << "] C: " 
-            << "a_ok=" << alloc_ok_count << ", "
-            << "r_ok=" << release_ok_count << ", "
-            << "a_avg=" << alloc_st.avg() << ", "
-            << "r_avg=" << release_st.avg() 
+  std::cout << "#[" << getpid() << "] C FINISH: " 
+            << "a_ok=" << alc_ok_st.count() << ", "
+            << "r_ok=" << rls_ok_st.count() << ", "
+            << "a_ok_avg=" << alc_ok_st.avg() << ", "
+            << "a_ng_avg=" << alc_ng_st.avg() << ", "
+            << "r_ok_avg=" << rls_ok_st.avg() << ", "
+            << "r_ng_avg=" << rls_ng_st.avg() 
             << std::endl;
 }
 
@@ -179,7 +125,7 @@ void parent_start(Allocator& alc, const Parameter& param) {
     }
   }
 
-  std::cout << "#[" << getpid() << "] P: " 
+  std::cout << "#[" << getpid() << "] P FINISH: " 
             << "exit=" << exit_num << ", " 
             << "signal=" << signal_num << ", "
             << "unknown=" << unknown_num << std::endl;
@@ -187,9 +133,9 @@ void parent_start(Allocator& alc, const Parameter& param) {
 
 
 int main(int argc, char** argv) {
-  if(argc != 9) {
+  if(argc != 10) {
   usage:
-    std::cerr << "Usage: allocator-test ALLOCATION_METHOD(variable|fixed|malloc) PROCESS_COUNT LOOP_COUNT MAX_HOLD_TIME(μs) ALLOC_SIZE_MIN ALLOC_SIZE_MAX SHM_SIZE KILL_NUM" << std::endl;
+    std::cerr << "Usage: allocator-test ALLOCATION_METHOD(variable|fixed|malloc) PROCESS_COUNT LOOP_COUNT MAX_NICE MAX_HOLD_TIME(μs) ALLOC_SIZE_MIN ALLOC_SIZE_MAX SHM_SIZE KILL_NUM" << std::endl;
     return 1;
   }
 
@@ -201,7 +147,8 @@ int main(int argc, char** argv) {
     atoi(argv[5]),
     atoi(argv[6]),
     atoi(argv[7]),
-    atoi(argv[8])
+    atoi(argv[8]),
+    atoi(argv[9])
   };
 
   imque::ipc::SharedMemory shm(param.shm_size);
