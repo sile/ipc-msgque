@@ -8,6 +8,7 @@
 #include <string.h>
 #include <stdlib.h>
 #include <math.h>
+#include <limits.h>
 
 #include <sys/types.h>
 #include <sys/wait.h>
@@ -18,6 +19,7 @@
 #include <signal.h>
 #include <sys/time.h>
 
+// TODO: nice値変動パラメータ追加、計時間隔とか
 struct Parameter {
   std::string method; // "variable" | "fixed" | "malloc"
   int process_count;
@@ -32,98 +34,43 @@ struct Parameter {
 class NanoTimer {
 public:
   NanoTimer() {
-#ifdef CLOCK_REALTIME
-    clock_gettime(CLOCK_REALTIME, &t);
-#else
     gettimeofday(&t, NULL);
-#endif
   }
 
   long elapsed() {
-#ifdef CLOCK_REALTIME
-    timespec now;
-    clock_gettime(CLOCK_REALTIME, &now);
-#else
     timeval now;
     gettimeofday(&now, NULL);
-#endif
     return ns(now) - ns(t);
   }
 
-#ifdef CLOCK_REALTIME
-  long ns(const timespec& ts) {
-    return static_cast<long>(static_cast<long long>(ts.tv_sec)*1000*1000*1000 + ts.tv_nsec);
-  }
-#else
   long ns(const timeval& ts) {
     return static_cast<long>(static_cast<long long>(ts.tv_sec)*1000*1000*1000 + ts.tv_usec*1000);
   }
-#endif
 
 private:
-#ifdef CLOCK_REALTIME
-  timespec t;
-#else
   timeval t;
-#endif
 };
 
 struct Stat {
-  Stat(unsigned loop_count) 
-    : loop_count(loop_count),
-      allocate_ok_count(0),
-      release_ok_count(0),
-      allocate_times(loop_count,-1),
-      release_times(loop_count,-1) {
+  Stat() : count(0), min(0), max(INT_MAX), total(0) {
   }
   
-  const unsigned loop_count;
-  unsigned allocate_ok_count;
-  unsigned release_ok_count;
-  std::vector<long> allocate_times;
-  std::vector<long> release_times;
+  void add(int val) {
+    count++;
+    if(min < val) min = val;
+    if(max > val) max = val;
+    total += val;
+  }
+  
+  int avg() const {
+    return static_cast<int>(total / count);
+  }
+
+  int count;
+  int min;
+  int max;
+  long long total;
 };
-
-long calc_average(const std::vector<long>& ary) {
-  long long sum = 0;
-  long count = 0;
-  for(std::size_t i=0; i < ary.size(); i++) {
-    if(ary[i] != -1) {
-      sum += ary[i];
-      count++;
-    }
-  }
-  return static_cast<long>(sum / count);
-}
-
-long calc_max(const std::vector<long>& ary) {
-  long max = ary[0];
-  for(std::size_t i=1; i < ary.size(); i++) 
-    if(ary[i] != -1 && max < ary[i])
-      max = ary[i];
-  return max;
-}
-
-long calc_min(const std::vector<long>& ary) {
-  long min = ary[0];
-  for(std::size_t i=1; i < ary.size(); i++)
-    if(ary[i] != -1 && ary[i] < min)
-      min = ary[i];
-  return min;
-}
-  
-long calc_standard_deviation(const std::vector<long>& ary) {
-  long avg = calc_average(ary);
-  long long sum = 0;
-  long count = 0;
-  for(std::size_t i=1; i < ary.size(); i++) {
-    if(ary[i] != -1) {
-      sum += static_cast<long>(pow(ary[i] - avg, 2));
-      count++;
-    }
-  }
-  return static_cast<long>(sqrt(sum / count));
-}
 
 class MallocAllocator {
 public:
@@ -160,7 +107,10 @@ template<class Allocator>
 void child_start(Allocator& alc, const Parameter& param) {
   srand(time(NULL) + getpid());
   
-  Stat st(param.loop_count);
+  Stat alloc_st;
+  Stat release_st;
+  int alloc_ok_count = 0;
+  int release_ok_count = 0;
   int size_range = param.alloc_size_max-param.alloc_size_min;
   for(int i=0; i < param.loop_count; i++) {
     uint32_t size = static_cast<uint32_t>((rand() % size_range) + param.alloc_size_min);
@@ -168,8 +118,8 @@ void child_start(Allocator& alc, const Parameter& param) {
     NanoTimer t1;
     //typename Allocator::DESCRIPTOR_TYPE md = alc.allocate(size);
     typename Descriptor<Allocator>::TYPE md = alc.allocate(size);
-    st.allocate_times[i] = t1.elapsed();
-    st.allocate_ok_count += md==0 ? 0 : 1;
+    alloc_st.add(t1.elapsed());
+    alloc_ok_count += md==0 ? 0 : 1;
     
     if(param.max_hold_micro_sec)
       usleep(rand() % param.max_hold_micro_sec);
@@ -179,23 +129,16 @@ void child_start(Allocator& alc, const Parameter& param) {
       
       NanoTimer t2;
       bool ok = alc.release(md); 
-      st.release_times[i] = t2.elapsed();
-      st.release_ok_count += ok ? 1 : 0;
+      release_st.add(t2.elapsed());
+      release_ok_count += ok ? 1 : 0;
     }
   }
 
-
   std::cout << "#[" << getpid() << "] C: " 
-            << "a_ok=" << st.allocate_ok_count << ", "
-            << "r_ok=" << st.release_ok_count << ", "
-            << "a_avg=" << calc_average(st.allocate_times) << ", "
-            << "a_min=" << calc_min(st.allocate_times) << ", "
-            << "a_max=" << calc_max(st.allocate_times) << ", "
-            << "a_sd=" << calc_standard_deviation(st.allocate_times) << ", "
-            << "r_avg=" << calc_average(st.release_times) << ", "
-            << "r_min=" << calc_min(st.release_times) << ", "
-            << "r_max=" << calc_max(st.release_times) << ", "
-            << "r_sd=" << calc_standard_deviation(st.release_times)
+            << "a_ok=" << alloc_ok_count << ", "
+            << "r_ok=" << release_ok_count << ", "
+            << "a_avg=" << alloc_st.avg() << ", "
+            << "r_avg=" << release_st.avg() 
             << std::endl;
 }
 
