@@ -188,6 +188,9 @@ namespace imque {
           }
 
           if(atomic::compare_and_swap(&tail_ref.node_next(), node.next, new_tail)) {
+            if(atomic::compare_and_swap(&que_->tail, tail_ref.md(), new_tail)) {
+              alc_.release(tail_ref.md());
+            } 
             break;
           }
         }
