@@ -98,6 +98,7 @@ void parent_start(imque::Queue& que, imque::ipc::SharedMemory& recv_marks, const
     }
   }
 
+  int ok_count = 0;
   int missing_count = 0;
   int duplicate_count = 0;
   for(int i=0; i < param.process_count*param.messages_per_process; i++) {
@@ -106,10 +107,13 @@ void parent_start(imque::Queue& que, imque::ipc::SharedMemory& recv_marks, const
       missing_count++;
     } else if(count > 1) {
       duplicate_count++;
+    } else {
+      ok_count++;
     }
   }
       
-  std::cout << "#[" << getpid() << "] P FINISH: " 
+  std::cout << "#[" << getpid() << "] FINISH: " 
+            << "ok=" << ok_count << ", "
             << "miss=" << missing_count << ", " 
             << "dup=" << duplicate_count << " | "
             << "exit=" << exit_num << ", " 
