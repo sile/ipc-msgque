@@ -181,16 +181,12 @@ namespace imque {
           Node node = tail_ref.node_copy();
           if(node.next != Node::END) {
             // tail が末尾を指していないので、一つ前に進める
-            if(atomic::compare_and_swap(&que_->tail, tail_ref.md(), node.next)) {
-              alc_.release(tail_ref.md());
-            } 
+            tryMoveNext(&que_->tail, tail_ref.md(), node.next);
             continue;
           }
 
           if(atomic::compare_and_swap(&tail_ref.node_next(), node.next, new_tail)) {
-            if(atomic::compare_and_swap(&que_->tail, tail_ref.md(), new_tail)) {
-              alc_.release(tail_ref.md());
-            } 
+            tryMoveNext(&que_->tail, tail_ref.md(), new_tail);
             break;
           }
         }
@@ -205,14 +201,21 @@ namespace imque {
 
           Node node = head_ref.node_copy();
           if(node.next == Node::END) {
-            return 0;
+            return 0; // queue is empty
           }
 
-          if(atomic::compare_and_swap(&que_->head, head_ref.md(), node.next)) {
-            alc_.release(head_ref.md());
+          if(tryMoveNext(&que_->head, head_ref.md(), node.next)) {
             return node.next;
           }
         }
+      }
+
+      bool tryMoveNext(volatile uint32_t* place, uint32_t curr, uint32_t next) {
+        if(atomic::compare_and_swap(place, curr, next)) {
+          alc_.release(curr);
+          return true;
+        }
+        return false;
       }
 
     private:
