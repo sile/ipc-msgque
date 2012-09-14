@@ -6,7 +6,7 @@ all: sample test
 
 sample: anonymous-sample named-sample
 
-test: allocator-test msgque-test
+test: allocator-test msgque-test consistency-check
 
 anonymous-sample:
 	g++ -Iinclude ${CPPFLAGS} -o bin/${@} src/bin/${@}.cc
@@ -18,4 +18,7 @@ allocator-test:
 	g++ -Iinclude ${CPPFLAGS} -o bin/${@} src/bin/${@}.cc
 
 msgque-test:
+	g++ -Iinclude ${CPPFLAGS} -o bin/${@} src/bin/${@}.cc
+
+consistency-check:
 	g++ -Iinclude ${CPPFLAGS} -o bin/${@} src/bin/${@}.cc
