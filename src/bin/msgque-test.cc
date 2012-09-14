@@ -6,26 +6,24 @@
 #include <iostream>
 #include <string>
 #include <vector>
-#include <algorithm>
-
 #include <string.h>
 #include <stdlib.h>
 #include <sys/types.h>
 #include <sys/wait.h>
 #include <unistd.h>
 #include <errno.h>
-#include <math.h>
 #include <signal.h>
-
 #include <sys/time.h>
 
 struct Param {
   int reader_count;
   int reader_loop_count;
+  int reader_max_nice;
   int read_interval;
 
   int writer_count;
   int writer_loop_count;
+  int writer_max_nice;
   int write_interval;
   
   int msg_size_min;
@@ -44,6 +42,8 @@ void gen_random_string(std::string& s, std::size_t size) {
 
 void reader_start(const Param& param, imque::Queue& que) {
   srand(time(NULL) + getpid());
+  int new_nice = nice(rand() % (param.reader_max_nice+1));
+  std::cout << "#[" << getpid() << "] R START: nice=" << new_nice << std::endl;
   
   imque::Stat ok_st;
   imque::Stat ng_st;
@@ -65,6 +65,8 @@ void reader_start(const Param& param, imque::Queue& que) {
 
 void writer_start(const Param& param, imque::Queue& que) {
   srand(time(NULL) + getpid());
+  int new_nice = nice(rand() % (param.writer_max_nice+1));
+  std::cout << "#[" << getpid() << "] W START: nice=" << new_nice << std::endl;
   
   imque::Stat ok_st;
   imque::Stat ng_st;
@@ -131,8 +133,8 @@ void parent_start(const Param& param, imque::Queue& que) {
 
   int exit_num=0;
   int signal_num=0;
+  int sigkill_num=0;
   int unknown_num=0;
-
   std::vector<pid_t>* children[2] = {&writers, &readers};
   for(int j=0; j < 2; j++) {
     for(std::size_t i=0; i < children[j]->size(); i++) {
@@ -141,7 +143,11 @@ void parent_start(const Param& param, imque::Queue& que) {
       if(WIFEXITED(status)) {
         exit_num++;
       } else if(WIFSIGNALED(status)) {
-        signal_num++;
+        if(WTERMSIG(status) == SIGKILL) {
+          sigkill_num++;
+        } else {
+          signal_num++; 
+        }
       } else {
         unknown_num++;
       }
@@ -150,14 +156,15 @@ void parent_start(const Param& param, imque::Queue& que) {
 
   std::cout << "#[" << getpid() << "] P FINISH: " 
             << "exit=" << exit_num << ", " 
+            << "killed=" << sigkill_num << ", "
             << "signal=" << signal_num << ", "
             << "unknown=" << unknown_num << " | " 
             << "overflow=" << que.overflowedCount() << std::endl;
 }
 
 int main(int argc, char** argv) {
-  if(argc != 11) {
-    std::cerr << "Usage: msgque-test READER_COUNT READER_LOOP_COUNT READ_INTERVAL(μs) WRITER_COUNT WRITER_LOOP_COUNT WRITE_INTERVAL(μs) MESSAGE_SIZE_MIN MESSAGE_SIZSE_MAX SHM_SIZE KILL_NUM" << std::endl;
+  if(argc != 13) {
+    std::cerr << "Usage: msgque-test READER_COUNT READER_LOOP_COUNT READER_MAX_NICE READ_INTERVAL(μs) WRITER_COUNT WRITER_LOOP_COUNT WRITER_MAX_NICE WRITE_INTERVAL(μs) MESSAGE_SIZE_MIN MESSAGE_SIZSE_MAX SHM_SIZE KILL_NUM" << std::endl;
     return 1;
   }
 
@@ -171,12 +178,12 @@ int main(int argc, char** argv) {
     atoi(argv[7]),
     atoi(argv[8]),
     atoi(argv[9]),
-    atoi(argv[10])
+    atoi(argv[10]),
+    atoi(argv[11]),
+    atoi(argv[12])
   };
 
   imque::Queue que(param.shm_size);
-  que.init();
-  
   if(! que) {
     std::cerr << "[ERROR] queue initialization failed" << std::endl;
     return 1;

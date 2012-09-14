@@ -8,10 +8,8 @@
 #include <iostream>
 #include <string>
 #include <vector>
-#include <algorithm>
 #include <string.h>
 #include <stdlib.h>
-#include <math.h>
 #include <limits.h>
 #include <sys/types.h>
 #include <sys/wait.h>
@@ -50,7 +48,7 @@ template<> struct Descriptor<MallocAllocator>                     { typedef void
 template<class Allocator>
 void child_start(Allocator& alc, const Parameter& param) {
   srand(time(NULL) + getpid());
-  int new_nice = nice(rand() % std::max(1, param.max_nice));
+  int new_nice = nice(rand() % (param.max_nice+1));
   std::cout << "#[" << getpid() << "] C START: nice=" << new_nice << std::endl;
 
   imque::Stat alc_ok_st;
