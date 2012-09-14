@@ -45,7 +45,7 @@ namespace imque {
         
         ~NodeRef() {
           if(md_) {
-            alc_.release(md_);
+            assert(alc_.release(md_));
           }
         }
 
@@ -212,7 +212,7 @@ namespace imque {
 
       bool tryMoveNext(volatile uint32_t* place, uint32_t curr, uint32_t next) {
         if(atomic::compare_and_swap(place, curr, next)) {
-          alc_.release(curr);
+          assert(alc_.release(curr));
           return true;
         }
         return false;
