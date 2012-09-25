@@ -10,7 +10,7 @@
 
 namespace imque {
   namespace queue {
-    static const char MAGIC[] = "IMQUE-0.1.1";
+    static const char MAGIC[] = "IMQUE-0.1.2";
 
     // FIFOキュー
     class QueueImpl {
@@ -45,7 +45,8 @@ namespace imque {
         
         ~NodeRef() {
           if(md_) {
-            assert(alc_.release(md_));
+            bool rlt = alc_.release(md_);
+            assert(rlt);
           }
         }
 
@@ -88,7 +89,8 @@ namespace imque {
           
           que_->head = sentinel;
           que_->tail = sentinel;
-          assert(alc_.dup(sentinel)); // head と tail の二箇所から参照されているので、参照カウントを一つ増やしておく
+          bool rlt = alc_.dup(sentinel); // head と tail の二箇所から参照されているので、参照カウントを一つ増やしておく
+          assert(rlt);
 
           que_->overflowed_count = 0;
         }
@@ -146,7 +148,8 @@ namespace imque {
         Node* node = alc_.ptr<Node>(md);
         buf.assign(node->data, node->data_size);
       
-        assert(alc_.release(md));
+        bool rlt = alc_.release(md);
+        assert(rlt);
         return true;
       }
       
@@ -170,7 +173,8 @@ namespace imque {
 
     private:
       void enqImpl(uint32_t new_tail) {
-        assert(alc_.dup(new_tail, 2)); // head と tail からの参照分を始めにカウントしておく
+        bool rlt = alc_.dup(new_tail, 2); // head と tail からの参照分を始めにカウントしておく
+        assert(rlt);
 
         for(;;) {
           NodeRef tail_ref(que_->tail, alc_);
@@ -212,7 +216,8 @@ namespace imque {
 
       bool tryMoveNext(volatile uint32_t* place, uint32_t curr, uint32_t next) {
         if(atomic::compare_and_swap(place, curr, next)) {
-          assert(alc_.release(curr));
+          bool rlt = alc_.release(curr);
+          assert(rlt);
           return true;
         }
         return false;

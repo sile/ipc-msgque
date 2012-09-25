@@ -8,7 +8,7 @@
 * プロジェクトページ: https://github.com/sile/ipc-msgque
 
 ## バージョン
-* 0.1.1
+* 0.1.2
 
 ## 対応環境
 * gccのver4.1以上

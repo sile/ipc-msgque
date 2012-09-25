@@ -182,7 +182,8 @@ namespace imque {
 
         node.version++;
         node.setRefCount(1);
-        assert(snap.compare_and_swap(node)); // 他と競合するような使い方をしてはいけない
+        bool rlt = snap.compare_and_swap(node); // 他と競合するような使い方をしてはいけない
+        assert(rlt);
 
         desc.version++;
         return desc.encode();
