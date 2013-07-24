@@ -65,7 +65,10 @@ namespace imque {
       QueueImpl(ipc::SharedMemory& shm)
         : shm_size_(shm.size()),
           que_(shm.ptr<Header>()),
-          alc_(shm.ptr<void>(HEADER_SIZE), std::max(0, static_cast<int32_t>(shm.size() - HEADER_SIZE))) {
+          alc_(shm.ptr<void>(HEADER_SIZE), std::max(0, static_cast<int32_t>(shm.size() - HEADER_SIZE))),
+          element_count_(0),
+          local_head_(0)
+      {
       }
 
       operator bool() const { return alc_ && que_; }
@@ -135,6 +138,7 @@ namespace imque {
         }
 
         enqImpl(md);
+        element_count_++;
         return true;
       }
 
@@ -150,6 +154,23 @@ namespace imque {
       
         bool rlt = alc_.release(md);
         assert(rlt);
+        assert(element_count_ > 0);
+        element_count_--;
+        return true;
+      }
+      
+      bool localDeq(std::string& buf) {
+        uint32_t md = localDeqImpl();
+        if(md == 0) {
+          return false;
+        }
+
+        Node* node = alc_.ptr<Node>(md);
+        buf.assign(node->data, node->data_size);
+
+        bool rlt = alc_.release(md);
+        assert(rlt);
+        
         return true;
       }
       
@@ -170,6 +191,8 @@ namespace imque {
       size_t resetOverflowedCount() { 
         return atomic::fetch_and_clear(&que_->overflowed_count);
       }
+
+      size_t getElementCount() const { return element_count_; }
 
     private:
       void enqImpl(uint32_t new_tail) {
@@ -214,6 +237,28 @@ namespace imque {
         }
       }
 
+      uint32_t localDeqImpl() {
+        if(local_head_ == 0) {
+          local_head_ = que_->head;
+        }
+
+        for(;;) {
+          NodeRef head_ref(local_head_, alc_);
+          if(! head_ref) {
+            local_head_ = que_->head;
+            continue;
+          }
+
+          Node node = head_ref.node_copy();
+          if(node.next == Node::END) {
+            return 0; // queue is empty
+          }
+
+          local_head_ = node.next;
+          return node.next;
+        }
+      }
+
       bool tryMoveNext(volatile uint32_t* place, uint32_t curr, uint32_t next) {
         if(atomic::compare_and_swap(place, curr, next)) {
           bool rlt = alc_.release(curr);
@@ -228,6 +273,9 @@ namespace imque {
 
       Header* que_;
       allocator::FixedAllocator alc_;
+
+      size_t element_count_; // XXX: 破壊的な操作を行うのは一人のみという前提
+      uint32_t local_head_; // md
     };
   }
 }
