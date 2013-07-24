@@ -253,8 +253,13 @@ namespace imque {
         
         delete local_head_ref_;
         local_head_ref_ = new NodeRef(node.next, alc_);
-        assert(*local_head_ref_);
-        return node.next;
+        if(*local_head_ref_) {
+          return node.next;
+        } else {
+          delete local_head_ref_;
+          local_head_ref_ = NULL;
+          return localDeqImpl();
+        }
       }
 
       bool tryMoveNext(volatile uint32_t* place, uint32_t curr, uint32_t next) {
