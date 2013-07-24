@@ -156,7 +156,7 @@ namespace imque {
       
       template<typename T>
       T* ptr(uint32_t md, uint32_t offset) const { return base_alc_.ptr<T>(md, offset); }
-
+      
     private:
       static uint32_t getSuperBlockId(uint32_t size) {
         uint32_t block_size = BLOCK_SIZE_START;

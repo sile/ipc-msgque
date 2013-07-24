@@ -59,8 +59,6 @@ namespace imque {
     // キューへの要素追加失敗回数の取得と、カウントの初期化をアトミックに行う。
     size_t resetOverflowedCount() { return impl_.resetOverflowedCount(); }
 
-    size_t getElementCount() const { return impl_.getElementCount(); }
-
     bool localDeq(std::string& data) { return impl_.localDeq(data); }
 
   private:

@@ -38,27 +38,33 @@ int main(int argc, char** argv) {
   
   for(int i=0; i < child_count; i++) {
     if(fork() == 0) {
+      usleep(50 * 1000);
       // child process
-      char buf[1024]; 
-      sprintf(buf, "[%d:%d] Hello", i, getpid());
-      que.enq(buf, strlen(buf));
-      
+      std::string buf;
+  
+      for(int j=0; j < child_count;) {
+        if(que.localDeq(buf)) {
+          std::cout << "[" << getpid() << ":" << j << "] receive# " << buf << std::endl;
+          j++;
+        }
+      }
       return 0;
     }
   }
 
   // parent process
-  std::string buf;
-  for(int i=0; i < child_count;) {
-    if(que.deq(buf)) {
-      std::cout << "receive# " << buf << std::endl;
-      i++;
-    } else {
-      if(que.overflowedCount() != 0) {
-        size_t count = que.resetOverflowedCount();
-        std::cout << "queue is full# dropped " << count << " messages" << std::endl;
-        i += count;
-      }
+  char buf[1024]; 
+  for(int i=0; i < child_count; i++) {
+    sprintf(buf, "[%d:%d] Hello", i, getpid());
+    que.enq(buf, strlen(buf));
+  }
+  usleep(500 * 1000);
+
+  std::string buf2;
+  for(int j=0; j < child_count;) {
+    if(que.deq(buf2)) {
+      std::cout << "[" << getpid() << ":" << j << "] receive# " << buf2 << std::endl;
+      j++;
     }
   }
 

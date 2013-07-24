@@ -74,7 +74,21 @@ namespace imque {
           nodes_(reinterpret_cast<Node*>(region)),
           chunks_(reinterpret_cast<Chunk*>(nodes_+node_count_)) {
       }
-      
+
+      /*
+      void summary() {
+        std::cout << "[summary]" << std::endl;
+        size_t i = 0;
+        while(i != node_count_) {
+          std::cout << " node[" << i << "]: "
+                    << nodes_[i].next << ", " << nodes_[i].count << ", " << nodes_[i].status
+                    << std::endl;
+          i = nodes_[i].next;
+        }
+        std::cout << std::endl;
+      }
+      */
+
       operator bool() const { return nodes_ != NULL && node_count_ > 2 && node_count_ < NODE_COUNT_LIMIT; }
 
       // 初期化メソッド。
@@ -123,6 +137,7 @@ namespace imque {
         node.setRefCount(1);
 
         Descriptor desc = {node.version, allocated_node_index}; // memory descriptor
+
         return desc.encode();
       }
 
@@ -342,6 +357,7 @@ namespace imque {
 
         Node new_pred_node;
         bool is_neighbor = node_index == index(pred)+pred.node().count;
+        
         if(is_neighbor) {
           // 隣接している場合は、解放の時点で結合してしまう
           new_pred_node = pred.node().changeCount(pred.node().count + node->count);

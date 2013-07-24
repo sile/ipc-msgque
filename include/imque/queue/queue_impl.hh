@@ -8,6 +8,8 @@
 #include <string.h>
 #include <algorithm>
 
+#include <iostream> // XXX:
+
 namespace imque {
   namespace queue {
     static const char MAGIC[] = "IMQUE-0.1.2";
@@ -66,9 +68,14 @@ namespace imque {
         : shm_size_(shm.size()),
           que_(shm.ptr<Header>()),
           alc_(shm.ptr<void>(HEADER_SIZE), std::max(0, static_cast<int32_t>(shm.size() - HEADER_SIZE))),
-          element_count_(0),
-          local_head_(0)
+          local_head_ref_(NULL)
       {
+      }
+
+      ~QueueImpl() {
+        if(local_head_ref_) {
+          delete local_head_ref_;
+        }
       }
 
       operator bool() const { return alc_ && que_; }
@@ -138,7 +145,6 @@ namespace imque {
         }
 
         enqImpl(md);
-        element_count_++;
         return true;
       }
 
@@ -154,8 +160,6 @@ namespace imque {
       
         bool rlt = alc_.release(md);
         assert(rlt);
-        assert(element_count_ > 0);
-        element_count_--;
         return true;
       }
       
@@ -168,9 +172,6 @@ namespace imque {
         Node* node = alc_.ptr<Node>(md);
         buf.assign(node->data, node->data_size);
 
-        bool rlt = alc_.release(md);
-        assert(rlt);
-        
         return true;
       }
       
@@ -191,8 +192,6 @@ namespace imque {
       size_t resetOverflowedCount() { 
         return atomic::fetch_and_clear(&que_->overflowed_count);
       }
-
-      size_t getElementCount() const { return element_count_; }
 
     private:
       void enqImpl(uint32_t new_tail) {
@@ -238,25 +237,24 @@ namespace imque {
       }
 
       uint32_t localDeqImpl() {
-        if(local_head_ == 0) {
-          local_head_ = que_->head;
+        while(local_head_ref_ == NULL) {
+
+          local_head_ref_ = new NodeRef(que_->head, alc_);
+          if(! *local_head_ref_) {
+            delete local_head_ref_;
+            local_head_ref_ = NULL;
+          }
         }
 
-        for(;;) {
-          NodeRef head_ref(local_head_, alc_);
-          if(! head_ref) {
-            local_head_ = que_->head;
-            continue;
-          }
-
-          Node node = head_ref.node_copy();
-          if(node.next == Node::END) {
-            return 0; // queue is empty
-          }
-
-          local_head_ = node.next;
-          return node.next;
+        Node node = local_head_ref_->node_copy();
+        if(node.next == Node::END) {
+          return 0; // queue is empty
         }
+        
+        delete local_head_ref_;
+        local_head_ref_ = new NodeRef(node.next, alc_);
+        assert(*local_head_ref_);
+        return node.next;
       }
 
       bool tryMoveNext(volatile uint32_t* place, uint32_t curr, uint32_t next) {
@@ -274,8 +272,7 @@ namespace imque {
       Header* que_;
       allocator::FixedAllocator alc_;
 
-      size_t element_count_; // XXX: 破壊的な操作を行うのは一人のみという前提
-      uint32_t local_head_; // md
+      NodeRef* local_head_ref_;
     };
   }
 }
